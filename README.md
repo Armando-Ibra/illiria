@@ -18,7 +18,7 @@ docker compose -f deploy/compose.dev.yml up -d        # Postgres + Mailpit (emai
 dotnet tool restore
 dotnet run --project src/Illiria.Api -- migrate        # apply migrations
 dotnet run --project src/Illiria.Api                   # API on http://localhost:5080 (Scalar at /scalar)
-cd web && npm install && npm run dev                   # web app on http://localhost:5173
+cd web && corepack enable && pnpm install && pnpm dev   # web app on http://localhost:5173
 ```
 
 Register at http://localhost:5173, confirm the email from Mailpit, log in.
@@ -28,7 +28,7 @@ Tenancy mode: `Tenancy:Mode` in `src/Illiria.Api/appsettings.json` (`Multi` or `
 
 ```bash
 dotnet test Illiria.slnx          # unit + architecture + integration (integration needs Docker)
-cd web && npm run lint && npm run typecheck && npm run build
+cd web && pnpm run lint && pnpm run typecheck && pnpm run build
 ```
 
 ## Layout

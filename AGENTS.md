@@ -17,8 +17,8 @@ Full-stack SaaS starter. Read `docs/adr/` before changing a convention; update t
 dotnet build Illiria.slnx
 dotnet test Illiria.slnx                                   # needs Docker for integration tests
 dotnet ef migrations add <Name> --project src/Illiria.Api --output-dir Platform/Persistence/Migrations
-cd web && npm run api:gen                                  # after any API contract change
-cd web && npm run lint && npm run typecheck && npm run build
+cd web && pnpm run api:gen                                  # after any API contract change
+cd web && pnpm run lint && pnpm run typecheck && pnpm run build
 ```
 
 ## Rules (each one is tested or checked in CI)

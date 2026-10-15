@@ -21,5 +21,5 @@ Reference implementation: `src/Illiria.Api/Features/Projects/`. Copy its shape, 
 5. **Tests** — in `tests/Illiria.Api.IntegrationTests/<Feature>Tests.cs` (`[Collection(MultiTenantCollection.Name)]`,
    `ResetAsync()` in `InitializeAsync`): happy path, validation 400, role 403 where relevant, and an isolation test
    proving another organization gets 404 by id (copy `ProjectTests.Another_organizations_projects_are_invisible_even_by_id`).
-6. **Contract** — `cd web && npm run api:gen` and commit `src/Illiria.Api/openapi/illiria.json` + `web/src/api/schema.d.ts`.
+6. **Contract** — `cd web && pnpm run api:gen` and commit `src/Illiria.Api/openapi/illiria.json` + `web/src/api/schema.d.ts`.
 7. **Verify** — `dotnet build Illiria.slnx` (warnings are errors) and `dotnet test Illiria.slnx`.
