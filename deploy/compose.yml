@@ -1,0 +1,88 @@
+# Production stack for a single VM: Caddy (TLS + web app) -> API -> Postgres.
+# Usage: see deploy/README.md.   docker compose --env-file .env up -d
+name: illiria
+
+x-api: &api
+  image: ${API_IMAGE:-illiria-api:local}
+  build:
+    context: ..
+    dockerfile: deploy/api.Dockerfile
+  environment:
+    ConnectionStrings__Default: "Host=postgres;Database=illiria;Username=illiria;Password=${POSTGRES_PASSWORD}"
+    App__PublicUrl: "https://${APP_DOMAIN}"
+    Tenancy__Mode: ${TENANCY_MODE:-Multi}
+    Tenancy__DefaultOrganizationName: ${DEFAULT_ORGANIZATION_NAME:-Default}
+    Smtp__Host: ${SMTP_HOST:?SMTP_HOST is required}
+    Smtp__Port: ${SMTP_PORT:-587}
+    Smtp__Security: ${SMTP_SECURITY:-StartTls}
+    Smtp__Username: ${SMTP_USERNAME:-}
+    Smtp__Password: ${SMTP_PASSWORD:-}
+    Smtp__From: ${SMTP_FROM:?SMTP_FROM is required}
+    # Trust X-Forwarded-For only from Caddy's network (real client IPs for rate limiting and logs).
+    ForwardedHeaders__KnownNetworks__0: 172.30.0.0/24
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: illiria
+      POSTGRES_USER: illiria
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U illiria -d illiria"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [backend]
+
+  # Applies migrations, then exits. The API starts only after it succeeded.
+  migrate:
+    <<: *api
+    command: ["migrate"]
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [backend]
+
+  api:
+    <<: *api
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    networks: [backend, edge]
+
+  web:
+    image: ${WEB_IMAGE:-illiria-web:local}
+    build:
+      context: ..
+      dockerfile: deploy/web.Dockerfile
+    restart: unless-stopped
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:?APP_DOMAIN is required}
+      ACME_EMAIL: ${ACME_EMAIL:?ACME_EMAIL is required}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [api]
+    networks: [edge]
+
+networks:
+  backend: {}
+  edge:
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+
+volumes:
+  pgdata: {}
+  caddy_data: {}
+  caddy_config: {}

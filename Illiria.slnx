@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Illiria.Api/Illiria.Api.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Illiria.Api.Tests/Illiria.Api.Tests.csproj" />
+    <Project Path="tests/Illiria.Api.IntegrationTests/Illiria.Api.IntegrationTests.csproj" />
+  </Folder>
+</Solution>

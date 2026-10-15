@@ -1,0 +1,33 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+[*.cs]
+indent_size = 4
+csharp_style_namespace_declarations = file_scoped:warning
+csharp_style_var_when_type_is_apparent = true:suggestion
+dotnet_style_qualification_for_field = false:suggestion
+# ASP.NET Core has no SynchronizationContext: ConfigureAwait(false) adds noise, not safety.
+dotnet_diagnostic.CA2007.severity = none
+# Minimal API handlers and EF entities are public by design.
+dotnet_diagnostic.CA1515.severity = none
+# Logging: prefer [LoggerMessage]; plain templates are allowed but never interpolation.
+dotnet_diagnostic.CA1848.severity = suggestion
+dotnet_diagnostic.CA2254.severity = warning
+
+[**/Migrations/*.cs]
+generated_code = true
+dotnet_analyzer_diagnostic.severity = none
+
+[tests/**.cs]
+# Test names use underscores and test classes are not sealed.
+dotnet_diagnostic.CA1707.severity = none
+# xUnit collection definitions are conventionally named *Collection.
+dotnet_diagnostic.CA1711.severity = none
+dotnet_diagnostic.CA2007.severity = none

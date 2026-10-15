@@ -1,0 +1,94 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  api:
+    name: API
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - run: dotnet restore Illiria.slnx
+      - run: dotnet build Illiria.slnx -c Release --no-restore
+      # Integration tests use Testcontainers; GitHub-hosted runners have Docker.
+      - run: dotnet test Illiria.slnx -c Release --no-build
+      - name: Migrations match the model
+        run: |
+          dotnet tool restore
+          dotnet ef migrations has-pending-model-changes --project src/Illiria.Api
+      - name: OpenAPI document is up to date
+        run: |
+          dotnet build src/Illiria.Api -c Release -p:OpenApiGenerateDocuments=true
+          git diff --exit-code -- src/Illiria.Api/openapi
+
+  web:
+    name: Web
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - name: API types match the OpenAPI document
+        run: |
+          npm run api:types
+          git diff --exit-code -- src/api
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run build
+
+  images:
+    name: Images
+    needs: [api, web]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      PUSH: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/setup-buildx-action@v3
+      - if: env.PUSH == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: names
+        run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/api.Dockerfile
+          push: ${{ env.PUSH == 'true' }}
+          tags: |
+            ghcr.io/${{ steps.names.outputs.owner }}/illiria-api:${{ github.sha }}
+            ghcr.io/${{ steps.names.outputs.owner }}/illiria-api:latest
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/web.Dockerfile
+          push: ${{ env.PUSH == 'true' }}
+          tags: |
+            ghcr.io/${{ steps.names.outputs.owner }}/illiria-web:${{ github.sha }}
+            ghcr.io/${{ steps.names.outputs.owner }}/illiria-web:latest
