@@ -82,6 +82,19 @@ public sealed class OrganizationTests(MultiTenantApiFactory factory) : IAsyncLif
     }
 
     [Fact]
+    public async Task An_invitation_whose_email_fails_is_not_kept()
+    {
+        var owner = await factory.SignUpAsync("owner@example.com");
+        var organization = await owner.CreateOrganizationAsync("Acme");
+        factory.Emails.FailFor("down@example.com");
+
+        var response = await owner.PostAsJsonAsync($"/api/orgs/{organization.Id}/invitations", new CreateInvitationRequest("down@example.com", OrganizationRole.Member), Json.Options, Ct);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.ServiceUnavailable);
+        (await owner.GetFromJsonAsync<List<InvitationDto>>($"/api/orgs/{organization.Id}/invitations", Json.Options, Ct))!.ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task Admins_cannot_invite_owners()
     {
         var owner = await factory.SignUpAsync("owner@example.com");

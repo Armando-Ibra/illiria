@@ -71,7 +71,8 @@ public static class PlatformExtensions
         {
             options.Cookie.Name = AuthCookieName;
             options.Cookie.HttpOnly = true;
-            options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+            // Dev runs on http://localhost, where some browsers (Safari) drop Secure cookies.
+            options.Cookie.SecurePolicy = builder.Environment.IsDevelopment() ? CookieSecurePolicy.SameAsRequest : CookieSecurePolicy.Always;
             options.Cookie.SameSite = SameSiteMode.Lax;
             options.ExpireTimeSpan = TimeSpan.FromDays(14);
             options.SlidingExpiration = true;
@@ -94,7 +95,7 @@ public static class PlatformExtensions
         services.AddProblemDetails();
         services.AddValidatorsFromAssemblyContaining<AppDbContext>(includeInternalTypes: true);
         services.ConfigureHttpJsonOptions(options => options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
-        services.AddOpenApi();
+        services.AddOpenApi(options => options.AddOperationTransformer(OrganizationScope.DocumentRouteParameter));
         services.AddHealthChecks().AddCheck<DatabaseHealthCheck>("database", tags: ["ready"]);
 
         var authPermitLimit = configuration.GetValue("RateLimiting:AuthPermitLimit", 20);

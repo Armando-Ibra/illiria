@@ -37,7 +37,7 @@ internal sealed class AcceptInvitationRequestValidator : AbstractValidator<Accep
     public AcceptInvitationRequestValidator() => RuleFor(r => r.Token).NotEmpty().MaximumLength(100);
 }
 
-internal static class InvitationEndpoints
+internal static partial class InvitationEndpoints
 {
     private static readonly TimeSpan Lifetime = TimeSpan.FromDays(7);
 
@@ -80,8 +80,10 @@ internal static class InvitationEndpoints
         IEmailService email,
         IOptions<AppOptions> app,
         TimeProvider time,
+        ILoggerFactory loggers,
         CancellationToken cancellationToken)
     {
+        var logger = loggers.CreateLogger(nameof(InvitationEndpoints));
         if (request.Role > current.Role)
         {
             return TypedResults.Problem(statusCode: StatusCodes.Status403Forbidden, title: "You can't invite with a role higher than your own.");
@@ -113,12 +115,24 @@ internal static class InvitationEndpoints
 
         var organizationName = await db.Organizations.Where(o => o.Id == current.Id).Select(o => o.Name).SingleAsync(cancellationToken);
         var link = QueryHelpers.AddQueryString(app.Value.PublicUrl.TrimEnd('/') + "/invitations/accept", "token", token);
-        await email.SendAsync(
-            address,
-            $"You're invited to {organizationName}",
-            $"<p>You've been invited to join <strong>{WebUtility.HtmlEncode(organizationName)}</strong>. " +
-            $"<a href=\"{WebUtility.HtmlEncode(link)}\">Accept the invitation</a> (valid for 7 days).</p>",
-            cancellationToken);
+        try
+        {
+            await email.SendAsync(
+                address,
+                $"You're invited to {organizationName}",
+                $"<p>You've been invited to join <strong>{WebUtility.HtmlEncode(organizationName)}</strong>. " +
+                $"<a href=\"{WebUtility.HtmlEncode(link)}\">Accept the invitation</a> (valid for 7 days).</p>",
+                cancellationToken);
+        }
+#pragma warning disable CA1031 // Any send failure: don't keep an invitation nobody received.
+        catch (Exception ex) when (ex is not OperationCanceledException)
+#pragma warning restore CA1031
+        {
+            LogInvitationEmailFailed(logger, ex, invitation.Id);
+            db.Invitations.Remove(invitation);
+            await db.SaveChangesAsync(CancellationToken.None);
+            return TypedResults.Problem(statusCode: StatusCodes.Status503ServiceUnavailable, title: "The invitation email could not be sent. Try again later.");
+        }
 
         return TypedResults.Created(
             $"/api/orgs/{invitation.OrganizationId}/invitations/{invitation.Id}",
@@ -166,6 +180,9 @@ internal static class InvitationEndpoints
         var organization = await db.Organizations.SingleAsync(o => o.Id == invitation.OrganizationId, cancellationToken);
         return TypedResults.Ok(new OrganizationDto(organization.Id, organization.Name, membership.Role));
     }
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Invitation {InvitationId} email could not be sent; invitation discarded.")]
+    private static partial void LogInvitationEmailFailed(ILogger logger, Exception exception, Guid invitationId);
 
     /// <summary>Only the hash is stored: a database leak doesn't hand out valid invitations.</summary>
     private static string HashToken(string token) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token)));

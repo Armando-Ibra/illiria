@@ -14,15 +14,28 @@ public sealed record SentEmail(string Recipient, string Subject, string Html)
 public sealed class CapturingEmailService : IEmailService
 {
     private readonly ConcurrentQueue<SentEmail> _sent = new();
+    private readonly ConcurrentDictionary<string, bool> _unreachable = new(StringComparer.OrdinalIgnoreCase);
 
     public Task SendAsync(string recipient, string subject, string htmlBody, CancellationToken cancellationToken = default)
     {
+        if (_unreachable.ContainsKey(recipient))
+        {
+            throw new InvalidOperationException($"SMTP failure (simulated) for {recipient}.");
+        }
+
         _sent.Enqueue(new SentEmail(recipient, subject, htmlBody));
         return Task.CompletedTask;
     }
 
+    /// <summary>Makes sending to <paramref name="recipient"/> fail, like an SMTP outage.</summary>
+    public void FailFor(string recipient) => _unreachable[recipient] = true;
+
     public SentEmail Last(string recipient, string subjectContains) =>
         _sent.Last(e => e.Recipient == recipient && e.Subject.Contains(subjectContains, StringComparison.OrdinalIgnoreCase));
 
-    public void Clear() => _sent.Clear();
+    public void Clear()
+    {
+        _sent.Clear();
+        _unreachable.Clear();
+    }
 }

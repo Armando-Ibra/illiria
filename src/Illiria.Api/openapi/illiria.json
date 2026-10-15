@@ -468,6 +468,17 @@
           "Organizations"
         ],
         "operationId": "GetOrganization",
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
         "responses": {
           "404": {
             "description": "Not Found",
@@ -508,6 +519,17 @@
           "Organizations"
         ],
         "operationId": "ListMembers",
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
         "responses": {
           "404": {
             "description": "Not Found",
@@ -553,6 +575,15 @@
         "operationId": "RemoveMember",
         "parameters": [
           {
+            "name": "orgId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
             "name": "userId",
             "in": "path",
             "required": true,
@@ -588,6 +619,17 @@
           "Organizations"
         ],
         "operationId": "ListInvitations",
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
         "responses": {
           "404": {
             "description": "Not Found",
@@ -629,6 +671,17 @@
           "Organizations"
         ],
         "operationId": "CreateInvitation",
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -689,6 +742,17 @@
           "Projects"
         ],
         "operationId": "ListProjects",
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
         "responses": {
           "404": {
             "description": "Not Found",
@@ -730,6 +794,17 @@
           "Projects"
         ],
         "operationId": "CreateProject",
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -792,6 +867,15 @@
         "operationId": "GetProject",
         "parameters": [
           {
+            "name": "orgId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
             "name": "id",
             "in": "path",
             "required": true,
@@ -833,6 +917,15 @@
         ],
         "operationId": "UpdateProject",
         "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
           {
             "name": "id",
             "in": "path",
@@ -895,6 +988,15 @@
         ],
         "operationId": "DeleteProject",
         "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
           {
             "name": "id",
             "in": "path",

@@ -8,7 +8,8 @@ x-api: &api
     context: ..
     dockerfile: deploy/api.Dockerfile
   environment:
-    ConnectionStrings__Default: "Host=postgres;Database=illiria;Username=illiria;Password=${POSTGRES_PASSWORD}"
+    # GSS off: the runtime image has no Kerberos library and Npgsql would log an error on every connect.
+    ConnectionStrings__Default: "Host=postgres;Database=illiria;Username=illiria;Password=${POSTGRES_PASSWORD};GSS Encryption Mode=Disable"
     App__PublicUrl: "https://${APP_DOMAIN}"
     Tenancy__Mode: ${TENANCY_MODE:-Multi}
     Tenancy__DefaultOrganizationName: ${DEFAULT_ORGANIZATION_NAME:-Default}

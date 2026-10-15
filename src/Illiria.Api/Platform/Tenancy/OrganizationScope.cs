@@ -1,6 +1,8 @@
 using Illiria.Api.Platform.Identity;
 using Illiria.Api.Platform.Persistence;
+using Microsoft.AspNetCore.OpenApi;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.OpenApi;
 
 namespace Illiria.Api.Platform.Tenancy;
 
@@ -29,6 +31,30 @@ public static class OrganizationScope
     public static TBuilder RequireOrganizationRole<TBuilder>(this TBuilder builder, OrganizationRole role)
         where TBuilder : IEndpointConventionBuilder
         => builder.WithMetadata(new RequiredOrganizationRole(role));
+
+    /// <summary>
+    /// Handlers don't bind <c>orgId</c> (the filter reads it), so ASP.NET Core leaves it out of the OpenAPI
+    /// document. Declare it, or generated clients can't pass it.
+    /// </summary>
+    internal static Task DocumentRouteParameter(OpenApiOperation operation, OpenApiOperationTransformerContext context, CancellationToken cancellationToken)
+    {
+        var template = context.Description.RelativePath ?? "";
+        if (!template.Contains($"{{{RouteParameter}", StringComparison.Ordinal)
+            || operation.Parameters?.Any(p => p.Name == RouteParameter) == true)
+        {
+            return Task.CompletedTask;
+        }
+
+        operation.Parameters ??= [];
+        operation.Parameters.Insert(0, new OpenApiParameter
+        {
+            Name = RouteParameter,
+            In = ParameterLocation.Path,
+            Required = true,
+            Schema = new OpenApiSchema { Type = JsonSchemaType.String, Format = "uuid" },
+        });
+        return Task.CompletedTask;
+    }
 
     private static async ValueTask<object?> EnterOrganizationAsync(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
     {

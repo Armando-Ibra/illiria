@@ -29,6 +29,7 @@ Tenancy mode: `Tenancy:Mode` in `src/Illiria.Api/appsettings.json` (`Multi` or `
 ```bash
 dotnet test Illiria.slnx          # unit + architecture + integration (integration needs Docker)
 cd web && pnpm run lint && pnpm run typecheck && pnpm run build
+cd web && pnpm run test:e2e      # browser tests against the real API (see web/README.md)
 ```
 
 ## Layout
