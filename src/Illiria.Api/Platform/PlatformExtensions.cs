@@ -82,7 +82,8 @@ public static class PlatformExtensions
         });
 
         // A password change or reset updates the security stamp; existing cookies stop working within this interval.
-        services.Configure<SecurityStampValidatorOptions>(options => options.ValidationInterval = TimeSpan.FromMinutes(5));
+        var securityStampInterval = configuration.GetValue("Identity:SecurityStampValidationInterval", TimeSpan.FromMinutes(5));
+        services.Configure<SecurityStampValidatorOptions>(options => options.ValidationInterval = securityStampInterval);
 
         // Keys in Postgres: cookies survive restarts and deploys, and are backed up with the database.
         services.AddDataProtection().PersistKeysToDbContext<AppDbContext>().SetApplicationName("Illiria");

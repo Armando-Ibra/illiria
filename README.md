@@ -11,7 +11,7 @@ What's not (yet), and when it will be: [docs/adr/0008-deferred.md](docs/adr/0008
 
 ## Run it locally
 
-Prerequisites: .NET SDK 10, Node 22, Docker.
+Prerequisites: .NET SDK 10, Node 24 (with Corepack for pnpm), Docker.
 
 ```bash
 docker compose -f deploy/compose.dev.yml up -d        # Postgres + Mailpit (emails at http://localhost:8025)

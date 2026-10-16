@@ -50,15 +50,26 @@ public abstract class ApiFactory(TenancyMode mode) : WebApplicationFactory<Progr
     }
 
     /// <summary>A browser-like client: cookies on, X-CSRF header on (like the web app's API client).</summary>
-    public HttpClient CreateBrowserClient(bool withCsrfHeader = true)
+    public HttpClient CreateBrowserClient(bool withCsrfHeader = true) => CreateBrowserClient(this, withCsrfHeader);
+
+    public static HttpClient CreateBrowserClient(WebApplicationFactory<Program> factory, bool withCsrfHeader = true)
     {
-        var client = CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost"), HandleCookies = true });
+        ArgumentNullException.ThrowIfNull(factory);
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost"), HandleCookies = true });
         if (withCsrfHeader)
         {
             client.DefaultRequestHeaders.Add("X-CSRF", "1");
         }
 
         return client;
+    }
+
+    /// <summary>Runs <paramref name="action"/> against the database, outside any HTTP request (test setup only).</summary>
+    public async Task WithDbAsync(Func<Illiria.Api.Platform.Persistence.AppDbContext, Task> action)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+        await using var scope = Services.CreateAsyncScope();
+        await action(scope.ServiceProvider.GetRequiredService<Illiria.Api.Platform.Persistence.AppDbContext>());
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -70,6 +81,8 @@ public abstract class ApiFactory(TenancyMode mode) : WebApplicationFactory<Progr
         builder.UseSetting("Smtp:From", "Illiria <no-reply@illiria.test>");
         builder.UseSetting("Tenancy:Mode", mode.ToString());
         builder.UseSetting("RateLimiting:AuthPermitLimit", "10000");
+        // Check the security stamp on every request, so session invalidation is observable in tests.
+        builder.UseSetting("Identity:SecurityStampValidationInterval", "00:00:00");
         builder.ConfigureTestServices(services =>
         {
             services.RemoveAll<IEmailService>();

@@ -10,8 +10,10 @@ which removes tenant isolation too. We want one code path for both product types
 ## Decision
 - The tenant is an **Organization**. Users belong to organizations through **Membership** (role Owner/Admin/Member).
 - `Tenancy:Mode`:
-  - `Multi`: users create organizations and invite members by email (token stored hashed, 7 days, must match
-    the invitee's confirmed email, role ≤ inviter's role).
+  - `Multi`: users create organizations and invite members by email (token stored hashed, 7 days, single use,
+    must match the invitee's confirmed email, role ≤ inviter's role). Admins revoke pending invitations.
+  - Role changes: nobody grants a role above their own; only an Owner changes or removes an Owner; an organization
+    always keeps at least one Owner (demoting, removing or leaving as the last Owner returns 409). Any member can leave.
   - `Single`: one implicit organization; every new user joins it, the first as Owner. Same code, same tables.
 - **The organization comes only from the route**: `/api/orgs/{orgId}/...` (`MapOrganizationScope()`).
   On every request the caller's membership is read from the database; non-members get **404** (no id probing),

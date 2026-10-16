@@ -5,7 +5,7 @@
     <UserSecretsId>illiria-api</UserSecretsId>
     <InvariantGlobalization>true</InvariantGlobalization>
     <!-- OpenAPI document for the web client. Off by default (it runs the app during the build);
-         `npm run api:gen` in web/ builds with -p:OpenApiGenerateDocuments=true and regenerates the TS types. -->
+         `pnpm run api:gen` in web/ builds with -p:OpenApiGenerateDocuments=true and regenerates the TS types. -->
     <OpenApiGenerateDocuments Condition="'$(OpenApiGenerateDocuments)' == ''">false</OpenApiGenerateDocuments>
     <OpenApiDocumentsDirectory>$(MSBuildProjectDirectory)/openapi</OpenApiDocumentsDirectory>
     <OpenApiGenerateDocumentsOptions>--file-name illiria</OpenApiGenerateDocumentsOptions>

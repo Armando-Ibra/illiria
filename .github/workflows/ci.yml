@@ -48,7 +48,7 @@ jobs:
           package_json_file: web/package.json
       - uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
           cache-dependency-path: web/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
@@ -60,9 +60,71 @@ jobs:
       - run: pnpm run typecheck
       - run: pnpm run build
 
+  e2e:
+    name: E2E
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: illiria
+          POSTGRES_USER: illiria
+          POSTGRES_PASSWORD: illiria
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U illiria -d illiria"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+      mailpit:
+        image: axllent/mailpit:v1.31.3
+        ports: ["1025:1025", "8025:8025"]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: web/package.json
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+        working-directory: web
+      - run: pnpm exec playwright install --with-deps chromium
+        working-directory: web
+      - run: dotnet build src/Illiria.Api
+      # The real API (Development settings: Postgres + Mailpit above), multi-tenant first, then single-tenant
+      # on its own database. The tests read the emails the API sends through Mailpit's HTTP API.
+      - name: E2E (multi-tenant)
+        run: |
+          dotnet run --project src/Illiria.Api --no-build -- migrate
+          scripts/ci/start-api.sh
+          (cd web && pnpm run test:e2e)
+          scripts/ci/stop-api.sh
+      - name: E2E (single-tenant)
+        env:
+          ConnectionStrings__Default: Host=localhost;Port=5432;Database=illiria_single;Username=illiria;Password=illiria
+          Tenancy__Mode: Single
+          E2E_TENANCY_MODE: Single
+        run: |
+          dotnet run --project src/Illiria.Api --no-build -- migrate
+          scripts/ci/start-api.sh
+          (cd web && pnpm run test:e2e)
+          scripts/ci/stop-api.sh
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-report
+          path: |
+            web/playwright-report
+            api.log
+          retention-days: 7
+
   images:
     name: Images
-    needs: [api, web]
+    needs: [api, web, e2e]
     runs-on: ubuntu-latest
     permissions:
       contents: read

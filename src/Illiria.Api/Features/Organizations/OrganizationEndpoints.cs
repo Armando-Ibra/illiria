@@ -13,8 +13,6 @@ public sealed record CreateOrganizationRequest(string Name);
 
 public sealed record OrganizationDto(Guid Id, string Name, OrganizationRole Role);
 
-public sealed record MemberDto(Guid UserId, string Email, OrganizationRole Role, DateTimeOffset JoinedAt);
-
 internal sealed class CreateOrganizationRequestValidator : AbstractValidator<CreateOrganizationRequest>
 {
     public CreateOrganizationRequestValidator() => RuleFor(r => r.Name).NotEmpty().MaximumLength(100);
@@ -32,11 +30,7 @@ public static class OrganizationEndpoints
 
         var organization = endpoints.MapOrganizationScope().WithTags("Organizations");
         organization.MapGet("", GetAsync).WithName("GetOrganization");
-        organization.MapGet("/members", ListMembersAsync).WithName("ListMembers");
-        organization.MapDelete("/members/{userId:guid}", RemoveMemberAsync)
-            .RequireOrganizationRole(OrganizationRole.Admin)
-            .WithName("RemoveMember");
-
+        organization.MapMemberEndpoints();
         endpoints.MapInvitationEndpoints(organization);
         return endpoints;
     }
@@ -57,44 +51,5 @@ public static class OrganizationEndpoints
     {
         var organization = await db.Organizations.SingleAsync(o => o.Id == current.Id, cancellationToken);
         return TypedResults.Ok(new OrganizationDto(organization.Id, organization.Name, current.Role!.Value));
-    }
-
-    private static async Task<Ok<List<MemberDto>>> ListMembersAsync(ICurrentOrganization current, AppDbContext db, CancellationToken cancellationToken)
-    {
-        var members = await db.Memberships
-            .Where(m => m.OrganizationId == current.Id)
-            .Join(db.Users, m => m.UserId, u => u.Id, (m, u) => new { u.Id, u.Email, m.Role, m.CreatedAt })
-            .OrderBy(m => m.Email)
-            .Select(m => new MemberDto(m.Id, m.Email!, m.Role, m.CreatedAt))
-            .ToListAsync(cancellationToken);
-        return TypedResults.Ok(members);
-    }
-
-    private static async Task<Results<NoContent, NotFound, ProblemHttpResult>> RemoveMemberAsync(
-        Guid userId, ICurrentOrganization current, AppDbContext db, CancellationToken cancellationToken)
-    {
-        var membership = await db.Memberships.SingleOrDefaultAsync(m => m.OrganizationId == current.Id && m.UserId == userId, cancellationToken);
-        if (membership is null)
-        {
-            return TypedResults.NotFound();
-        }
-
-        if (membership.Role == OrganizationRole.Owner)
-        {
-            if (current.Role != OrganizationRole.Owner)
-            {
-                return TypedResults.Problem(statusCode: StatusCodes.Status403Forbidden, title: "Only an owner can remove an owner.");
-            }
-
-            var owners = await db.Memberships.CountAsync(m => m.OrganizationId == current.Id && m.Role == OrganizationRole.Owner, cancellationToken);
-            if (owners <= 1)
-            {
-                return TypedResults.Problem(statusCode: StatusCodes.Status409Conflict, title: "An organization must keep at least one owner.");
-            }
-        }
-
-        db.Memberships.Remove(membership);
-        await db.SaveChangesAsync(cancellationToken);
-        return TypedResults.NoContent();
     }
 }

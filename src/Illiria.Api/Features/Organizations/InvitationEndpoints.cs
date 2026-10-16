@@ -50,6 +50,9 @@ internal static partial class InvitationEndpoints
             .RequireOrganizationRole(OrganizationRole.Admin)
             .WithValidation<CreateInvitationRequest>()
             .WithName("CreateInvitation");
+        organization.MapDelete("/invitations/{invitationId:guid}", RevokeAsync)
+            .RequireOrganizationRole(OrganizationRole.Admin)
+            .WithName("RevokeInvitation");
 
         // Outside the organization scope: the invitee is not a member yet.
         endpoints.MapPost("/api/invitations/accept", AcceptAsync)
@@ -137,6 +140,16 @@ internal static partial class InvitationEndpoints
         return TypedResults.Created(
             $"/api/orgs/{invitation.OrganizationId}/invitations/{invitation.Id}",
             new InvitationDto(invitation.Id, invitation.Email, invitation.Role, invitation.ExpiresAt));
+    }
+
+    /// <summary>Deletes a pending invitation: its link stops working. Accepted invitations are history, not revocable.</summary>
+    private static async Task<Results<NoContent, NotFound>> RevokeAsync(
+        Guid invitationId, ICurrentOrganization current, AppDbContext db, CancellationToken cancellationToken)
+    {
+        var deleted = await db.Invitations
+            .Where(i => i.Id == invitationId && i.OrganizationId == current.Id && i.AcceptedAt == null)
+            .ExecuteDeleteAsync(cancellationToken);
+        return deleted == 0 ? TypedResults.NotFound() : TypedResults.NoContent();
     }
 
     private static async Task<Results<Ok<OrganizationDto>, ProblemHttpResult>> AcceptAsync(

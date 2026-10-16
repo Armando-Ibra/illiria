@@ -6,7 +6,7 @@ generated from the API's OpenAPI document.
 
 ## Getting started
 
-Requires Node 22 and pnpm (the version is pinned in `package.json` → `packageManager`):
+Requires Node 24 and pnpm (the version is pinned in `package.json` → `packageManager`):
 
 ```bash
 corepack enable          # or install pnpm yourself

@@ -16,6 +16,6 @@ Not in the starter until a product needs it. When it does, build it in that prod
 | i18n | first non-English customer | request localization + resource files; web i18n library |
 | Audit log | compliance or customer request | EF interceptor writing org-scoped audit entries |
 | Admin / back-office | operating many customers | separate area with platform-level roles, never via tenant header tricks |
-| Invitation revoke / resend, member role changes | first B2B customer managing a team | endpoints under `/api/orgs/{orgId}/invitations` and `/members` (Admin+) |
+| Invitation resend | first support request about a lost invitation | revoke + invite again works today |
 | E2E tests in CI | first regression the API tests didn't catch | CI job: Postgres service + API (`Identity__RequireConfirmedEmail=false`) + `pnpm run test:e2e` |
 | Svelte frontend | a product that wants it | same generated OpenAPI contract |
