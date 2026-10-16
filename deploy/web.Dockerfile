@@ -1,7 +1,7 @@
 # Build context: repository root.  docker build -f deploy/web.Dockerfile .
 # One image serves the web app and reverse-proxies /api to the API: same origin, so cookies
 # stay SameSite and no CORS is needed. Caddy obtains and renews TLS certificates itself.
-FROM node:24-alpine AS build
+FROM node:25-alpine AS build
 # Corepack installs the exact pnpm version pinned in package.json ("packageManager").
 RUN npm install -g corepack@latest && corepack enable
 WORKDIR /web
