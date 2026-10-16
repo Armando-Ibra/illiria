@@ -17,7 +17,7 @@ jobs:
     name: API
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v5
         with:
           global-json-file: global.json
@@ -41,7 +41,7 @@ jobs:
       run:
         working-directory: web
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       # Installs the pnpm version pinned in web/package.json ("packageManager").
       - uses: pnpm/action-setup@v4
         with:
@@ -78,7 +78,7 @@ jobs:
         image: axllent/mailpit:v1.31.3
         ports: ["1025:1025", "8025:8025"]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v5
         with:
           global-json-file: global.json
@@ -132,7 +132,7 @@ jobs:
     env:
       PUSH: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v3
       - if: env.PUSH == 'true'
         uses: docker/login-action@v3
