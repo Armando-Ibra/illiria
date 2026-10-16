@@ -37,6 +37,11 @@ cd web && pnpm run test:e2e        # Playwright vs the REAL API: start it first 
 9. Secrets never go in `appsettings*.json` committed files, except local-dev defaults in `appsettings.Development.json`.
 10. Structured logging only (`[LoggerMessage]` or message templates), never string interpolation in log calls.
 11. Propagate `CancellationToken` to every EF/IO call.
+12. No raw SQL (`ExecuteSql*`, `FromSql*`) and no bulk update of `OrganizationId` in `Features/`: they bypass the
+    organization write guard. Platform code that needs raw SQL says why.
+13. Account changes that a stolen session must not make (2FA, email) require the current password
+    (`X-Current-Password`); new auth rules go in `Features/Auth/AuthHardening.cs`, not by forking Identity's endpoints.
+14. Security-relevant behavior ships with a test; `docs/security.md` lists the controls and the accepted risks.
 
 ## Style
 C#: file-scoped namespaces, `sealed` by default, records for DTOs, primary constructors, nullable on,

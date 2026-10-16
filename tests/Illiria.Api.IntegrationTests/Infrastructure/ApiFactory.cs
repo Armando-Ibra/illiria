@@ -81,6 +81,7 @@ public abstract class ApiFactory(TenancyMode mode) : WebApplicationFactory<Progr
         builder.UseSetting("Smtp:From", "Illiria <no-reply@illiria.test>");
         builder.UseSetting("Tenancy:Mode", mode.ToString());
         builder.UseSetting("RateLimiting:AuthPermitLimit", "10000");
+        builder.UseSetting("RateLimiting:InvitationsPerHour", "10000");
         // Check the security stamp on every request, so session invalidation is observable in tests.
         builder.UseSetting("Identity:SecurityStampValidationInterval", "00:00:00");
         builder.ConfigureTestServices(services =>

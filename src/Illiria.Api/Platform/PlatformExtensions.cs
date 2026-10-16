@@ -1,3 +1,5 @@
+using System.Security.Claims;
+using System.Security.Cryptography.X509Certificates;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
 using FluentValidation;
@@ -7,6 +9,7 @@ using Illiria.Api.Platform.Http;
 using Illiria.Api.Platform.Identity;
 using Illiria.Api.Platform.Persistence;
 using Illiria.Api.Platform.Tenancy;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
@@ -18,6 +21,7 @@ namespace Illiria.Api.Platform;
 public static class PlatformExtensions
 {
     public const string AuthRateLimitPolicy = "auth";
+    public const string InvitationsRateLimitPolicy = "invitations";
     public const string AuthCookieName = "illiria.auth";
 
     public static WebApplicationBuilder AddPlatform(this WebApplicationBuilder builder, bool migrateOnly)
@@ -65,7 +69,14 @@ public static class PlatformExtensions
                 options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
             })
             .AddUserManager<AppUserManager>()
+            .AddUserValidator<UserLengthValidator>()
             .AddEntityFrameworkStores<AppDbContext>();
+
+        // Server-side sessions: the cookie carries a session id, logout deletes the session.
+        services.AddSingleton<ITicketStore, DatabaseTicketStore>();
+        services.AddOptions<CookieAuthenticationOptions>(IdentityConstants.ApplicationScheme)
+            .Configure<ITicketStore>((options, store) => options.SessionStore = store);
+        services.AddHostedService<MaintenanceService>();
 
         services.ConfigureApplicationCookie(options =>
         {
@@ -86,11 +97,19 @@ public static class PlatformExtensions
         services.Configure<SecurityStampValidatorOptions>(options => options.ValidationInterval = securityStampInterval);
 
         // Keys in Postgres: cookies survive restarts and deploys, and are backed up with the database.
-        services.AddDataProtection().PersistKeysToDbContext<AppDbContext>().SetApplicationName("Illiria");
+        var dataProtection = services.AddDataProtection().PersistKeysToDbContext<AppDbContext>().SetApplicationName("Illiria");
+        // Optional: encrypt the key ring at rest, so a database dump alone can't forge sessions or reset codes.
+        var certificatePath = configuration["DataProtection:CertificatePath"];
+        if (!string.IsNullOrWhiteSpace(certificatePath))
+        {
+            dataProtection.ProtectKeysWithCertificate(
+                X509CertificateLoader.LoadPkcs12FromFile(certificatePath, configuration["DataProtection:CertificatePassword"]));
+        }
 
         // Email
         services.AddSingleton<IEmailService, SmtpEmailService>();
-        services.AddTransient<IEmailSender<User>, IdentityEmailSender>();
+        services.AddTransient<IdentityEmailSender>();
+        services.AddTransient<IEmailSender<User>>(sp => sp.GetRequiredService<IdentityEmailSender>());
 
         // HTTP
         services.AddProblemDetails();
@@ -100,12 +119,17 @@ public static class PlatformExtensions
         services.AddHealthChecks().AddCheck<DatabaseHealthCheck>("database", tags: ["ready"]);
 
         var authPermitLimit = configuration.GetValue("RateLimiting:AuthPermitLimit", 20);
+        var invitationsPerHour = configuration.GetValue("RateLimiting:InvitationsPerHour", 20);
         services.AddRateLimiter(options =>
         {
             options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
             options.AddPolicy(AuthRateLimitPolicy, context => RateLimitPartition.GetFixedWindowLimiter(
                 context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
                 _ => new FixedWindowRateLimiterOptions { PermitLimit = authPermitLimit, Window = TimeSpan.FromMinutes(1) }));
+            // Invitations send email to arbitrary addresses: cap them per user so the app can't be used for spam.
+            options.AddPolicy(InvitationsRateLimitPolicy, context => RateLimitPartition.GetFixedWindowLimiter(
+                context.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                _ => new FixedWindowRateLimiterOptions { PermitLimit = invitationsPerHour, Window = TimeSpan.FromHours(1) }));
         });
 
         // Behind Caddy: trust X-Forwarded-* only from the configured proxy networks, so rate limits and

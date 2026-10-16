@@ -49,8 +49,10 @@ internal static class MemberEndpoints
     }
 
     private static async Task<Results<Ok<MemberDto>, NotFound, ProblemHttpResult>> ChangeRoleAsync(
-        Guid userId, ChangeMemberRoleRequest request, ICurrentOrganization current, AppDbContext db, CancellationToken cancellationToken)
+        Guid userId, ChangeMemberRoleRequest request, ICurrentOrganization current, AppDbContext db, TenancyService tenancy, CancellationToken cancellationToken)
     {
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await tenancy.LockOrganizationAsync(current.Id!.Value, cancellationToken);
         var membership = await FindAsync(db, current, userId, cancellationToken);
         if (membership is null)
         {
@@ -75,14 +77,17 @@ internal static class MemberEndpoints
 
         membership.Role = request.Role;
         await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
 
         var email = await db.Users.Where(u => u.Id == userId).Select(u => u.Email!).SingleAsync(cancellationToken);
         return TypedResults.Ok(new MemberDto(userId, email, membership.Role, membership.CreatedAt));
     }
 
     private static async Task<Results<NoContent, NotFound, ProblemHttpResult>> RemoveAsync(
-        Guid userId, ICurrentOrganization current, AppDbContext db, CancellationToken cancellationToken)
+        Guid userId, ICurrentOrganization current, AppDbContext db, TenancyService tenancy, CancellationToken cancellationToken)
     {
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await tenancy.LockOrganizationAsync(current.Id!.Value, cancellationToken);
         var membership = await FindAsync(db, current, userId, cancellationToken);
         if (membership is null)
         {
@@ -102,24 +107,36 @@ internal static class MemberEndpoints
             }
         }
 
-        db.Memberships.Remove(membership);
-        await db.SaveChangesAsync(cancellationToken);
+        await RemoveMembershipAsync(db, membership, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         return TypedResults.NoContent();
     }
 
     /// <summary>Any member can leave, except the last owner (who must hand ownership over first).</summary>
     private static async Task<Results<NoContent, ProblemHttpResult>> LeaveAsync(
-        ClaimsPrincipal principal, ICurrentOrganization current, AppDbContext db, CancellationToken cancellationToken)
+        ClaimsPrincipal principal, ICurrentOrganization current, AppDbContext db, TenancyService tenancy, CancellationToken cancellationToken)
     {
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await tenancy.LockOrganizationAsync(current.Id!.Value, cancellationToken);
         var membership = (await FindAsync(db, current, principal.GetUserId(), cancellationToken))!;
         if (membership.Role == OrganizationRole.Owner && await IsLastOwnerAsync(db, current, cancellationToken))
         {
             return TypedResults.Problem(statusCode: StatusCodes.Status409Conflict, title: "Make someone else an owner before leaving.");
         }
 
+        await RemoveMembershipAsync(db, membership, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return TypedResults.NoContent();
+    }
+
+    /// <summary>Also drops the pending invitations they sent: those would otherwise outlive their access.</summary>
+    private static async Task RemoveMembershipAsync(AppDbContext db, Membership membership, CancellationToken cancellationToken)
+    {
         db.Memberships.Remove(membership);
         await db.SaveChangesAsync(cancellationToken);
-        return TypedResults.NoContent();
+        await db.Invitations
+            .Where(i => i.OrganizationId == membership.OrganizationId && i.InvitedByUserId == membership.UserId && i.AcceptedAt == null)
+            .ExecuteDeleteAsync(cancellationToken);
     }
 
     private static Task<Membership?> FindAsync(AppDbContext db, ICurrentOrganization current, Guid userId, CancellationToken cancellationToken) =>

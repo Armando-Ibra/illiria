@@ -13,6 +13,8 @@ x-api: &api
     App__PublicUrl: "https://${APP_DOMAIN}"
     Tenancy__Mode: ${TENANCY_MODE:-Multi}
     Tenancy__DefaultOrganizationName: ${DEFAULT_ORGANIZATION_NAME:-Default}
+    Tenancy__OwnerEmail: ${TENANCY_OWNER_EMAIL:-}
+    Identity__AllowRegistration: ${ALLOW_REGISTRATION:-true}
     Smtp__Host: ${SMTP_HOST:?SMTP_HOST is required}
     Smtp__Port: ${SMTP_PORT:-587}
     Smtp__Security: ${SMTP_SECURITY:-StartTls}

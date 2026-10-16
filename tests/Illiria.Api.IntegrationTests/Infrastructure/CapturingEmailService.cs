@@ -30,6 +30,8 @@ public sealed class CapturingEmailService : IEmailService
     /// <summary>Makes sending to <paramref name="recipient"/> fail, like an SMTP outage.</summary>
     public void FailFor(string recipient) => _unreachable[recipient] = true;
 
+    public IReadOnlyCollection<SentEmail> Sent => [.. _sent];
+
     public SentEmail Last(string recipient, string subjectContains) =>
         _sent.Last(e => e.Recipient == recipient && e.Subject.Contains(subjectContains, StringComparison.OrdinalIgnoreCase));
 

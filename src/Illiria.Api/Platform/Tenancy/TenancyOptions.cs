@@ -16,4 +16,7 @@ public sealed class TenancyOptions
 
     public TenancyMode Mode { get; set; } = TenancyMode.Multi;
     public string DefaultOrganizationName { get; set; } = "Default";
+
+    /// <summary>Single mode: the email that becomes Owner of the default organization. Unset: the first confirmed user.</summary>
+    public string? OwnerEmail { get; set; }
 }

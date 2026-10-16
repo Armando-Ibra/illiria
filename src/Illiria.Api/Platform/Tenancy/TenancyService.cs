@@ -25,7 +25,12 @@ public sealed class TenancyService(AppDbContext db, IOptions<TenancyOptions> opt
         }
     }
 
-    internal async Task OnUserCreatedAsync(Guid userId, CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Single mode: a user joins the default organization once their email is confirmed (never before: an
+    /// unconfirmed sign-up proves nothing). The Owner is <see cref="TenancyOptions.OwnerEmail"/> when configured,
+    /// otherwise the first confirmed user. Serialized with a database lock so two sign-ups can't both become Owner.
+    /// </summary>
+    internal async Task JoinDefaultOrganizationAsync(Guid userId, string? email, CancellationToken cancellationToken = default)
     {
         if (Mode != TenancyMode.Single)
         {
@@ -33,14 +38,26 @@ public sealed class TenancyService(AppDbContext db, IOptions<TenancyOptions> opt
         }
 
         await EnsureDefaultOrganizationAsync(cancellationToken);
-        var hasMembers = await db.Memberships.AnyAsync(m => m.OrganizationId == DefaultOrganizationId, cancellationToken);
-        db.Memberships.Add(new Membership
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await LockOrganizationAsync(DefaultOrganizationId, cancellationToken);
+
+        if (!await db.Memberships.AnyAsync(m => m.OrganizationId == DefaultOrganizationId && m.UserId == userId, cancellationToken))
         {
-            OrganizationId = DefaultOrganizationId,
-            UserId = userId,
-            Role = hasMembers ? OrganizationRole.Member : OrganizationRole.Owner,
-        });
-        await db.SaveChangesAsync(cancellationToken);
+            var ownerEmail = options.Value.OwnerEmail;
+            var isOwner = string.IsNullOrWhiteSpace(ownerEmail)
+                ? !await db.Memberships.AnyAsync(m => m.OrganizationId == DefaultOrganizationId && m.Role == OrganizationRole.Owner, cancellationToken)
+                : string.Equals(ownerEmail.Trim(), email, StringComparison.OrdinalIgnoreCase);
+
+            db.Memberships.Add(new Membership
+            {
+                OrganizationId = DefaultOrganizationId,
+                UserId = userId,
+                Role = isOwner ? OrganizationRole.Owner : OrganizationRole.Member,
+            });
+            await db.SaveChangesAsync(cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
     }
 
     public async Task<Organization> CreateOrganizationAsync(string name, Guid ownerId, CancellationToken cancellationToken = default)
@@ -51,4 +68,12 @@ public sealed class TenancyService(AppDbContext db, IOptions<TenancyOptions> opt
         await db.SaveChangesAsync(cancellationToken);
         return organization;
     }
+
+    /// <summary>
+    /// Serializes membership changes of one organization until the current transaction ends (Postgres advisory
+    /// lock), so checks like "is this the last owner?" can't race. Call inside a transaction.
+    /// </summary>
+    public Task LockOrganizationAsync(Guid organizationId, CancellationToken cancellationToken = default) =>
+        db.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock(hashtextextended({organizationId.ToString()}, 0))", cancellationToken);
 }

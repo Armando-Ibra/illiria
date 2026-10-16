@@ -61,6 +61,21 @@ public sealed partial class ArchitectureTests
         offenders.ShouldBeEmpty();
     }
 
+    /// <summary>
+    /// Raw SQL and bulk updates of OrganizationId bypass the organization filter's write guard (SaveChanges).
+    /// Features must not use them; Platform code that needs raw SQL documents why.
+    /// </summary>
+    [Fact]
+    public void Features_never_use_raw_sql_or_rewrite_organization_ids()
+    {
+        var featuresRoot = Path.Combine(RepositoryRoot(), "src", "Illiria.Api", "Features");
+        var offenders = Directory.EnumerateFiles(featuresRoot, "*.cs", SearchOption.AllDirectories)
+            .Where(file => UnsafeDataAccess().IsMatch(File.ReadAllText(file)))
+            .ToList();
+
+        offenders.ShouldBeEmpty();
+    }
+
     private static string RepositoryRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
@@ -74,4 +89,7 @@ public sealed partial class ArchitectureTests
 
     [GeneratedRegex(@"IgnoreQueryFilters\(\s*\)")]
     private static partial Regex BareIgnoreQueryFilters();
+
+    [GeneratedRegex(@"ExecuteSql|FromSql|SqlQuery|SetProperty\([^)]*OrganizationId")]
+    private static partial Regex UnsafeDataAccess();
 }

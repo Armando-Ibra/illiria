@@ -13,6 +13,9 @@ public sealed record MyOrganizationDto(Guid Id, string Name, OrganizationRole Ro
 
 public sealed record MeResponse(Guid Id, string Email, bool EmailConfirmed, TenancyMode TenancyMode, IReadOnlyList<MyOrganizationDto> Organizations);
 
+/// <summary>What the web app needs to know before anyone signs in.</summary>
+public sealed record AppConfigResponse(TenancyMode TenancyMode, bool RegistrationEnabled);
+
 public static class AuthEndpoints
 {
     public static IEndpointRouteBuilder MapAuthEndpoints(this IEndpointRouteBuilder endpoints)
@@ -21,8 +24,9 @@ public static class AuthEndpoints
         var auth = endpoints.MapGroup("/api/auth")
             .WithTags("Auth")
             .RequireRateLimiting(PlatformExtensions.AuthRateLimitPolicy)
-            .AddEndpointFilter(KeepSessionAfterSecurityChangeAsync);
+            .AddEndpointFilter(AuthHardening.FilterAsync);
         auth.MapIdentityApi<User>();
+        // Deletes the server-side session: a copy of the cookie stops working too.
         auth.MapPost("/logout", async (SignInManager<User> signInManager) =>
             {
                 await signInManager.SignOutAsync();
@@ -31,36 +35,14 @@ public static class AuthEndpoints
             .RequireAuthorization()
             .WithName("Logout");
 
+        endpoints.MapGet("/api/config", (HttpContext http, TenancyService tenancy) =>
+                TypedResults.Ok(new AppConfigResponse(tenancy.Mode, AuthHardening.RegistrationEnabled(http))))
+            .AllowAnonymous()
+            .WithTags("Auth")
+            .WithName("GetConfig");
+
         endpoints.MapGet("/api/me", GetMeAsync).RequireAuthorization().WithTags("Auth").WithName("GetMe");
         return endpoints;
-    }
-
-    /// <summary>
-    /// Changing the password or the 2FA settings (/manage/info, /manage/2fa) rotates the security stamp, which
-    /// signs out every session, including the one that made the change (Identity doesn't refresh it). Re-issue the
-    /// caller's cookie after a successful change: this device stays signed in, every other session is signed out.
-    /// </summary>
-    private static async ValueTask<object?> KeepSessionAfterSecurityChangeAsync(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
-    {
-        var result = await next(context);
-        var http = context.HttpContext;
-        // Identity's handlers return Results<...> unions: the status code is on the wrapped result.
-        var outcome = result is INestedHttpResult nested ? nested.Result : result;
-        if (HttpMethods.IsPost(http.Request.Method)
-            && http.Request.Path.StartsWithSegments("/api/auth/manage")
-            && outcome is IStatusCodeHttpResult { StatusCode: >= 200 and < 300 }
-            && http.User.Identity is { IsAuthenticated: true, AuthenticationType: var type }
-            && type == IdentityConstants.ApplicationScheme)
-        {
-            var signInManager = http.RequestServices.GetRequiredService<SignInManager<User>>();
-            var user = await signInManager.UserManager.GetUserAsync(http.User);
-            if (user is not null)
-            {
-                await signInManager.RefreshSignInAsync(user);
-            }
-        }
-
-        return result;
     }
 
     private static async Task<Results<Ok<MeResponse>, UnauthorizedHttpResult>> GetMeAsync(

@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using Illiria.Api.Features.Organizations;
 using Illiria.Api.IntegrationTests.Infrastructure;
 using Illiria.Api.Platform.Tenancy;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
 
 namespace Illiria.Api.IntegrationTests;
@@ -129,6 +130,98 @@ public sealed class MemberTests(MultiTenantApiFactory factory) : IAsyncLifetime
         var invitee = await factory.SignUpAsync("slow@example.com");
 
         (await invitee.PostAsJsonAsync("/api/invitations/accept", new AcceptInvitationRequest(token), Ct)).StatusCode.ShouldBe(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task Invitations_of_a_removed_admin_stop_working()
+    {
+        var (owner, organization) = await OwnerWithOrganizationAsync();
+        var (admin, adminId) = await JoinAsync(owner, organization.Id, "admin@example.com", OrganizationRole.Admin);
+        await InviteAsync(admin, organization.Id, "accomplice@example.com", OrganizationRole.Admin);
+        var token = factory.Emails.Last("accomplice@example.com", "invited").Link.QueryValue("token");
+
+        (await owner.DeleteAsync(new Uri($"/api/orgs/{organization.Id}/members/{adminId}", UriKind.Relative), Ct)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+
+        var accomplice = await factory.SignUpAsync("accomplice@example.com");
+        (await accomplice.PostAsJsonAsync("/api/invitations/accept", new AcceptInvitationRequest(token), Ct)).StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        (await owner.GetFromJsonAsync<List<InvitationDto>>($"/api/orgs/{organization.Id}/invitations", Json.Options, Ct))!.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task Invitations_of_a_demoted_admin_stop_working()
+    {
+        var (owner, organization) = await OwnerWithOrganizationAsync();
+        var (admin, adminId) = await JoinAsync(owner, organization.Id, "admin@example.com", OrganizationRole.Admin);
+        await InviteAsync(admin, organization.Id, "friend@example.com", OrganizationRole.Admin);
+        var token = factory.Emails.Last("friend@example.com", "invited").Link.QueryValue("token");
+
+        await owner.PutAsJsonAsync($"/api/orgs/{organization.Id}/members/{adminId}/role", new ChangeMemberRoleRequest(OrganizationRole.Member), Json.Options, Ct);
+
+        var friend = await factory.SignUpAsync("friend@example.com");
+        (await friend.PostAsJsonAsync("/api/invitations/accept", new AcceptInvitationRequest(token), Ct)).StatusCode.ShouldBe(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task An_address_gets_one_pending_invitation_at_a_time()
+    {
+        var (owner, organization) = await OwnerWithOrganizationAsync();
+        await InviteAsync(owner, organization.Id, "twice@example.com", OrganizationRole.Member);
+
+        var again = await owner.PostAsJsonAsync($"/api/orgs/{organization.Id}/invitations", new CreateInvitationRequest("TWICE@example.com", OrganizationRole.Member), Json.Options, Ct);
+
+        again.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+    }
+
+    [Theory]
+    [InlineData("\"IT Security\" <it@example.com>")]
+    [InlineData("it@example.com (IT)")]
+    [InlineData("not-an-email")]
+    public async Task Invitations_need_a_plain_email_address(string email)
+    {
+        var (owner, organization) = await OwnerWithOrganizationAsync();
+
+        var response = await owner.PostAsJsonAsync($"/api/orgs/{organization.Id}/invitations", new CreateInvitationRequest(email, OrganizationRole.Member), Json.Options, Ct);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task Organization_names_cannot_contain_control_characters()
+    {
+        var client = await factory.SignUpAsync("ada@example.com");
+
+        var response = await client.PostAsJsonAsync("/api/orgs", new CreateOrganizationRequest("Acme\r\nBcc: everyone"), Ct);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task Sending_invitations_is_rate_limited_per_user()
+    {
+        using var limited = factory.WithWebHostBuilder(b => b.UseSetting("RateLimiting:InvitationsPerHour", "2"));
+        var owner = ApiFactory.CreateBrowserClient(limited);
+        (await owner.PostAsJsonAsync("/api/auth/register", new { email = "owner@example.com", password = TestUsers.Password }, Ct)).EnsureSuccessStatusCode();
+        await owner.ConfirmEmailAsync(factory, "owner@example.com");
+        await owner.LoginAsync("owner@example.com");
+        var organization = await owner.CreateOrganizationAsync("Acme");
+
+        var statuses = new List<HttpStatusCode>();
+        for (var i = 0; i < 3; i++)
+        {
+            statuses.Add((await owner.PostAsJsonAsync($"/api/orgs/{organization.Id}/invitations", new CreateInvitationRequest($"p{i}@example.com", OrganizationRole.Member), Json.Options, Ct)).StatusCode);
+        }
+
+        statuses.ShouldBe([HttpStatusCode.Created, HttpStatusCode.Created, HttpStatusCode.TooManyRequests]);
+    }
+
+    [Fact]
+    public async Task Outsiders_cannot_list_members_or_invitations()
+    {
+        var (_, organization) = await OwnerWithOrganizationAsync();
+        var stranger = await factory.SignUpAsync("stranger@example.com");
+
+        (await stranger.GetAsync(new Uri($"/api/orgs/{organization.Id}/members", UriKind.Relative), Ct)).StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        (await stranger.GetAsync(new Uri($"/api/orgs/{organization.Id}/invitations", UriKind.Relative), Ct)).StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
 
     private async Task<(HttpClient Client, OrganizationDto Organization)> OwnerWithOrganizationAsync(string email = "owner@example.com", string name = "Acme")

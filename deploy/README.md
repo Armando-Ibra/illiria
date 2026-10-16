@@ -45,8 +45,28 @@ Restore (test it, a backup you never restored is a hope, not a backup):
 docker compose exec -T postgres pg_restore -U illiria -d illiria --clean --if-exists < backups/<file>.dump
 ```
 
-The database also holds the ASP.NET Core Data Protection keys (`data_protection_keys`): restoring it keeps
-existing sessions valid. Losing it signs everyone out.
+Backups are written owner-only (`umask 077`). Set `AGE_RECIPIENT` in `.env` to encrypt them with
+[age](https://age-encryption.org) before they leave the server (keep the private key elsewhere); restore with
+`age -d -i key.txt <file>.dump.age | docker compose exec -T postgres pg_restore -U illiria -d illiria --clean --if-exists`.
+
+The database also holds the ASP.NET Core Data Protection keys (`data_protection_keys`) and the sessions: restoring it
+keeps existing sessions valid. Losing it signs everyone out. Anyone with a plain dump could forge sessions, so either
+encrypt backups or protect the key ring with a certificate:
+
+```yaml
+# deploy/compose.yml, under x-api: environment + a mounted secret
+DataProtection__CertificatePath: /run/secrets/dataprotection.pfx
+DataProtection__CertificatePassword: ${DATAPROTECTION_CERT_PASSWORD}
+```
+
+Generate it once (`openssl req -x509 -newkey rsa:3072 -nodes -days 3650 -subj /CN=illiria-dataprotection -keyout k.pem -out c.pem && openssl pkcs12 -export -inkey k.pem -in c.pem -out dataprotection.pfx`)
+and back it up separately from the database. Turning it on later is fine; existing keys stay readable.
+
+## Access settings
+
+- `TENANCY_MODE=Single` with `TENANCY_OWNER_EMAIL=you@example.com`: that address becomes Owner of the default
+  organization when it confirms its email (otherwise the first confirmed user does).
+- `ALLOW_REGISTRATION=false`: invite-only; the sign-up page disappears and `/api/auth/register` returns 404.
 
 ## Operations notes
 

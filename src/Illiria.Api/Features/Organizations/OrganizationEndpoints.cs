@@ -15,7 +15,9 @@ public sealed record OrganizationDto(Guid Id, string Name, OrganizationRole Role
 
 internal sealed class CreateOrganizationRequestValidator : AbstractValidator<CreateOrganizationRequest>
 {
-    public CreateOrganizationRequestValidator() => RuleFor(r => r.Name).NotEmpty().MaximumLength(100);
+    public CreateOrganizationRequestValidator() =>
+        RuleFor(r => r.Name).NotEmpty().MaximumLength(100)
+            .Must(name => !name.Any(char.IsControl)).WithMessage("The name can't contain control characters.");
 }
 
 public static class OrganizationEndpoints

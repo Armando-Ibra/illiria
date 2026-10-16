@@ -5,6 +5,26 @@
     "version": "1.0.0"
   },
   "paths": {
+    "/api/config": {
+      "get": {
+        "tags": [
+          "Auth"
+        ],
+        "operationId": "GetConfig",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppConfigResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/me": {
       "get": {
         "tags": [
@@ -1231,6 +1251,21 @@
           },
           "refreshToken": {
             "type": "string"
+          }
+        }
+      },
+      "AppConfigResponse": {
+        "required": [
+          "tenancyMode",
+          "registrationEnabled"
+        ],
+        "type": "object",
+        "properties": {
+          "tenancyMode": {
+            "$ref": "#/components/schemas/TenancyMode"
+          },
+          "registrationEnabled": {
+            "type": "boolean"
           }
         }
       },

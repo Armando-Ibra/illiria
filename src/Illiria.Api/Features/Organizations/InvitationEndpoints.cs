@@ -27,8 +27,19 @@ internal sealed class CreateInvitationRequestValidator : AbstractValidator<Creat
 {
     public CreateInvitationRequestValidator()
     {
-        RuleFor(r => r.Email).NotEmpty().EmailAddress().MaximumLength(256);
+        RuleFor(r => r.Email).NotEmpty().MaximumLength(256)
+            .Must(BeAPlainAddress).WithMessage("Enter a plain email address, like name@example.com.");
         RuleFor(r => r.Role).IsInEnum();
+    }
+
+    /// <summary>Rejects display-name and comment forms ("Name" &lt;a@b&gt;, a@b (c)): the address must be exactly what was typed.</summary>
+    private static bool BeAPlainAddress(string email)
+    {
+        var trimmed = email?.Trim() ?? "";
+        return MimeKit.MailboxAddress.TryParse(trimmed, out var mailbox)
+            && mailbox is { Name.Length: 0 }
+            && mailbox.Address == trimmed
+            && trimmed.Contains('@', StringComparison.Ordinal);
     }
 }
 
@@ -40,6 +51,7 @@ internal sealed class AcceptInvitationRequestValidator : AbstractValidator<Accep
 internal static partial class InvitationEndpoints
 {
     private static readonly TimeSpan Lifetime = TimeSpan.FromDays(7);
+    private const int MaxPendingPerOrganization = 100;
 
     public static void MapInvitationEndpoints(this IEndpointRouteBuilder endpoints, RouteGroupBuilder organization)
     {
@@ -49,6 +61,7 @@ internal static partial class InvitationEndpoints
         organization.MapPost("/invitations", CreateAsync)
             .RequireOrganizationRole(OrganizationRole.Admin)
             .WithValidation<CreateInvitationRequest>()
+            .RequireRateLimiting(Platform.PlatformExtensions.InvitationsRateLimitPolicy)
             .WithName("CreateInvitation");
         organization.MapDelete("/invitations/{invitationId:guid}", RevokeAsync)
             .RequireOrganizationRole(OrganizationRole.Admin)
@@ -103,6 +116,20 @@ internal static partial class InvitationEndpoints
             return TypedResults.Problem(statusCode: StatusCodes.Status409Conflict, title: "This person is already a member.");
         }
 
+        var now = time.GetUtcNow();
+        var pending = db.Invitations.Where(i => i.OrganizationId == current.Id && i.AcceptedAt == null && i.ExpiresAt > now);
+#pragma warning disable CA1862 // Translated to SQL upper(); string.Equals(..., StringComparison) isn't translatable.
+        if (await pending.AnyAsync(i => i.Email.ToUpper() == normalized, cancellationToken))
+#pragma warning restore CA1862
+        {
+            return TypedResults.Problem(statusCode: StatusCodes.Status409Conflict, title: "This address already has a pending invitation.");
+        }
+
+        if (await pending.CountAsync(cancellationToken) >= MaxPendingPerOrganization)
+        {
+            return TypedResults.Problem(statusCode: StatusCodes.Status409Conflict, title: "Too many pending invitations: revoke some first.");
+        }
+
         var token = WebEncoders.Base64UrlEncode(RandomNumberGenerator.GetBytes(32));
         var invitation = new Invitation
         {
@@ -111,7 +138,7 @@ internal static partial class InvitationEndpoints
             Role = request.Role,
             TokenHash = HashToken(token),
             InvitedByUserId = principal.GetUserId(),
-            ExpiresAt = time.GetUtcNow().Add(Lifetime),
+            ExpiresAt = now.Add(Lifetime),
         };
         db.Invitations.Add(invitation);
         await db.SaveChangesAsync(cancellationToken);
@@ -177,6 +204,16 @@ internal static partial class InvitationEndpoints
         if (!user.EmailConfirmed || user.NormalizedEmail != users.NormalizeEmail(invitation.Email))
         {
             return TypedResults.Problem(statusCode: StatusCodes.Status403Forbidden, title: "This invitation was sent to a different email address.");
+        }
+
+        // An invitation is only as good as its inviter: if they left, were removed or demoted since, it's void.
+        var inviterRole = await db.Memberships
+            .Where(m => m.OrganizationId == invitation.OrganizationId && m.UserId == invitation.InvitedByUserId)
+            .Select(m => (OrganizationRole?)m.Role)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (inviterRole is null || inviterRole < OrganizationRole.Admin || inviterRole < invitation.Role)
+        {
+            return TypedResults.Problem(statusCode: StatusCodes.Status404NotFound, title: "Invitation not found or expired.");
         }
 
         var membership = await db.Memberships.SingleOrDefaultAsync(

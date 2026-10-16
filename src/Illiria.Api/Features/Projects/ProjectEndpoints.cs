@@ -15,7 +15,8 @@ internal sealed class SaveProjectRequestValidator : AbstractValidator<SaveProjec
 {
     public SaveProjectRequestValidator()
     {
-        RuleFor(r => r.Name).NotEmpty().MaximumLength(200);
+        RuleFor(r => r.Name).NotEmpty().MaximumLength(200)
+            .Must(name => !name.Any(char.IsControl)).WithMessage("The name can't contain control characters.");
         RuleFor(r => r.Description).MaximumLength(2000);
     }
 }

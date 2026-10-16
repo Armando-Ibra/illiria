@@ -164,6 +164,7 @@ public sealed class SecurityTests(MultiTenantApiFactory factory) : IAsyncLifetim
         var client = await factory.SignUpAsync("ada@example.com");
         var setup = await (await client.PostAsJsonAsync("/api/auth/manage/2fa", new { }, Ct)).Content.ReadFromJsonAsync<JsonElement>(Ct);
         var sharedKey = setup.GetProperty("sharedKey").GetString()!;
+        client.DefaultRequestHeaders.Add("X-Current-Password", Uri.EscapeDataString(TestUsers.Password));
         var enable = await client.PostAsJsonAsync("/api/auth/manage/2fa", new { enable = true, twoFactorCode = Totp.Code(sharedKey) }, Ct);
         enable.StatusCode.ShouldBe(HttpStatusCode.OK);
         (await enable.Content.ReadFromJsonAsync<JsonElement>(Ct)).GetProperty("recoveryCodes").GetArrayLength().ShouldBeGreaterThan(0);

@@ -25,6 +25,17 @@ public static class ProductionGuard
             {
                 problems.Add("Smtp:Host and Smtp:From are required.");
             }
+
+            if (!configuration.GetValue("Identity:RequireConfirmedEmail", true))
+            {
+                problems.Add("Identity:RequireConfirmedEmail can't be false in production.");
+            }
+
+            // Behind the reverse proxy every request comes from the proxy: without its network, rate limits are global.
+            if (string.IsNullOrWhiteSpace(configuration["ForwardedHeaders:KnownNetworks:0"]))
+            {
+                problems.Add("ForwardedHeaders:KnownNetworks must list the reverse proxy's network.");
+            }
         }
 
         if (problems.Count > 0)

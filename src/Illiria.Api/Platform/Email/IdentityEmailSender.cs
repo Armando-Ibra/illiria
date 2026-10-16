@@ -23,7 +23,7 @@ public sealed partial class IdentityEmailSender(
         var query = QueryHelpers.ParseQuery(apiLink.Query).ToDictionary(kv => kv.Key, kv => (string?)kv.Value.ToString());
         var link = QueryHelpers.AddQueryString(PublicUrl("/confirm-email"), query);
         return SendSafelyAsync(email, "Confirm your email",
-            $"<p>Confirm your email address by <a href=\"{WebUtility.HtmlEncode(link)}\">clicking here</a>.</p>");
+            $"<p>Confirm your email address by <a href=\"{WebUtility.HtmlEncode(link)}\">clicking here</a>. If you didn't create an account, ignore this email: nobody can use it until the address is confirmed.</p>");
     }
 
     public Task SendPasswordResetCodeAsync(User user, string email, string resetCode)
@@ -35,6 +35,18 @@ public sealed partial class IdentityEmailSender(
         });
         return SendSafelyAsync(email, "Reset your password",
             $"<p>Reset your password by <a href=\"{WebUtility.HtmlEncode(link)}\">clicking here</a>. If you didn't ask for this, ignore this email.</p>");
+    }
+
+    /// <summary>For accounts whose email isn't confirmed yet: choosing a password through this link confirms it.</summary>
+    public Task SendAccountSetupLinkAsync(string email, string code)
+    {
+        var link = QueryHelpers.AddQueryString(PublicUrl("/reset-password"), new Dictionary<string, string?>
+        {
+            ["email"] = email,
+            ["code"] = code,
+        });
+        return SendSafelyAsync(email, "Finish setting up your account",
+            $"<p>Choose a password to finish setting up your account: <a href=\"{WebUtility.HtmlEncode(link)}\">continue</a>. If you didn't create an account, ignore this email.</p>");
     }
 
     public Task SendPasswordResetLinkAsync(User user, string email, string resetLink) =>

@@ -10,7 +10,12 @@ Status: accepted · 2026-10-15
   The API never migrates at startup.
 - Production fails fast without its required configuration (`ProductionGuard`).
 - The API trusts `X-Forwarded-*` only from Caddy's fixed Docker network.
-- Daily `pg_dump` with retention and optional off-site copy (`deploy/backup.sh`, rclone); restore documented and tested.
+- Daily `pg_dump` with retention, owner-only permissions, optional `age` encryption and off-site copy
+  (`deploy/backup.sh`, rclone); restore documented and tested.
+- The Data Protection key ring (sessions, reset codes) lives in Postgres; optionally encrypted at rest with a
+  certificate (`DataProtection:CertificatePath`), so a database dump alone can't forge sessions.
+- Production also refuses to start with `Identity:RequireConfirmedEmail=false` or without
+  `ForwardedHeaders:KnownNetworks`.
 - CI builds both images; on `main` it pushes them to GHCR.
 
 ## Consequences
