@@ -1,0 +1,164 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  api:
+    name: API
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - run: dotnet restore Illiria.slnx
+      - run: dotnet build Illiria.slnx -c Release --no-restore
+      # Integration tests use Testcontainers; GitHub-hosted runners have Docker.
+      - run: dotnet test Illiria.slnx -c Release --no-build
+      - name: Migrations match the model
+        run: |
+          dotnet tool restore
+          dotnet ef migrations has-pending-model-changes --project src/Illiria.Api
+      - name: OpenAPI document is up to date
+        run: |
+          dotnet build src/Illiria.Api -c Release -p:OpenApiGenerateDocuments=true
+          git diff --exit-code -- src/Illiria.Api/openapi
+
+  web:
+    name: Web
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v5
+      # Installs the pnpm version pinned in web/package.json ("packageManager").
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: web/package.json
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - name: API types match the OpenAPI document
+        run: |
+          pnpm run api:types
+          git diff --exit-code -- src/api
+      - run: pnpm run lint
+      - run: pnpm run typecheck
+      - run: pnpm run build
+
+  e2e:
+    name: E2E
+    runs-on: ubuntu-latest
+    env:
+      # One runner IP sends every request: lift the per-IP/per-user limits for the test run.
+      RateLimiting__AuthPermitLimit: "1000"
+      RateLimiting__InvitationsPerHour: "1000"
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: illiria
+          POSTGRES_USER: illiria
+          POSTGRES_PASSWORD: illiria
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U illiria -d illiria"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+      mailpit:
+        image: axllent/mailpit:v1.31.3
+        ports: ["1025:1025", "8025:8025"]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: web/package.json
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+        working-directory: web
+      - run: pnpm exec playwright install --with-deps chromium
+        working-directory: web
+      - run: dotnet build src/Illiria.Api
+      # The real API (Development settings: Postgres + Mailpit above), multi-tenant first, then single-tenant
+      # on its own database. The tests read the emails the API sends through Mailpit's HTTP API.
+      - name: E2E (multi-tenant)
+        run: |
+          dotnet run --project src/Illiria.Api --no-build -- migrate
+          scripts/ci/start-api.sh
+          (cd web && pnpm run test:e2e)
+          scripts/ci/stop-api.sh
+      - name: E2E (single-tenant)
+        env:
+          ConnectionStrings__Default: Host=localhost;Port=5432;Database=illiria_single;Username=illiria;Password=illiria
+          Tenancy__Mode: Single
+          E2E_TENANCY_MODE: Single
+        run: |
+          dotnet run --project src/Illiria.Api --no-build -- migrate
+          scripts/ci/start-api.sh
+          (cd web && pnpm run test:e2e)
+          scripts/ci/stop-api.sh
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-report
+          path: |
+            web/playwright-report
+            api.log
+          retention-days: 7
+
+  images:
+    name: Images
+    needs: [api, web, e2e]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      PUSH: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/setup-buildx-action@v3
+      - if: env.PUSH == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: names
+        run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/api.Dockerfile
+          push: ${{ env.PUSH == 'true' }}
+          tags: |
+            ghcr.io/${{ steps.names.outputs.owner }}/illiria-api:${{ github.sha }}
+            ghcr.io/${{ steps.names.outputs.owner }}/illiria-api:latest
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/web.Dockerfile
+          push: ${{ env.PUSH == 'true' }}
+          tags: |
+            ghcr.io/${{ steps.names.outputs.owner }}/illiria-web:${{ github.sha }}
+            ghcr.io/${{ steps.names.outputs.owner }}/illiria-web:latest

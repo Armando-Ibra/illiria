@@ -1,0 +1,12 @@
+# pnpm settings for web/ (a single package, not a monorepo). Supply-chain hardening:
+
+# Don't install versions published less than a day ago: most malicious releases are caught and pulled by then.
+minimumReleaseAge: 1440
+
+# Dependencies' install scripts run only when approved here (`pnpm approve-builds`). None needs one today:
+# esbuild, Tailwind's oxide and Rolldown ship prebuilt binaries as optional dependencies.
+allowBuilds: {}
+
+# Fail the install, instead of silently skipping, when a dependency wants to run a build script:
+# review it, then approve it above.
+strictDepBuilds: true
