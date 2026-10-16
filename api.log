@@ -1,0 +1,21 @@
+Using launch settings from src/Illiria.Api/Properties/launchSettings.json...
+warn: Microsoft.AspNetCore.DataProtection.KeyManagement.XmlKeyManager[35]
+      No XML encryptor configured. Key {4bb9261b-3be1-4aa7-bd16-7ae47d46e06f} may be persisted to storage in unencrypted form.
+info: Illiria.Api.Platform.Hosting.MaintenanceService[113625527]
+      Cleanup removed 0 expired sessions and 0 unconfirmed accounts.
+info: Microsoft.Hosting.Lifetime[14]
+      Now listening on: http://localhost:5080
+info: Microsoft.Hosting.Lifetime[0]
+      Application started. Press Ctrl+C to shut down.
+info: Microsoft.Hosting.Lifetime[0]
+      Hosting environment: Development
+info: Microsoft.Hosting.Lifetime[0]
+      Content root path: /home/user/illiria/src/Illiria.Api
+info: Illiria.Api.Platform.Email.SmtpEmailService[766213221]
+      Email sent: Confirm your email
+info: Illiria.Api.Platform.Email.SmtpEmailService[766213221]
+      Email sent: Confirm your email
+info: Illiria.Api.Platform.Email.SmtpEmailService[766213221]
+      Email sent: Confirm your email
+info: Microsoft.Hosting.Lifetime[0]
+      Application is shutting down...

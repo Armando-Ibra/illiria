@@ -39,7 +39,9 @@ export function errorMessage(error: unknown): string {
       case 404:
         return error.problem.title && error.problem.title !== "Not Found" ? error.problem.title : "Not found."
       case 429:
-        return "Too many attempts. Wait a minute and try again."
+        return error.problem.title && error.problem.title !== "Too Many Requests"
+          ? error.problem.title
+          : "Too many attempts. Wait a minute and try again."
       default:
         if (error.status >= 500) return "Something went wrong on our side. Try again in a moment."
         return firstValidationMessage(error) ?? error.problem.title ?? error.message

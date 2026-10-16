@@ -4,7 +4,7 @@ set -euo pipefail
 nohup dotnet run --project src/Illiria.Api --no-build > api.log 2>&1 &
 echo $! > api.pid
 for _ in $(seq 1 60); do
-  if curl -sf http://localhost:5080/health/live > /dev/null; then
+  if curl -sf http://localhost:5080/health/ready > /dev/null; then
     echo "API is up."
     exit 0
   fi

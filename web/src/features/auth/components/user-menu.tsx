@@ -1,4 +1,5 @@
-import { LogOutIcon } from "lucide-react"
+import { LogOutIcon, UserRoundCogIcon } from "lucide-react"
+import { Link } from "react-router"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -7,6 +8,7 @@ import {
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuLinkItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
@@ -31,6 +33,10 @@ export function UserMenu() {
           <DropdownMenuLabel className="truncate text-sm font-normal text-foreground">{me.email}</DropdownMenuLabel>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
+        <DropdownMenuLinkItem render={<Link to="/account" />}>
+          <UserRoundCogIcon />
+          Account
+        </DropdownMenuLinkItem>
         <DropdownMenuItem onClick={() => logout.mutate(undefined)} disabled={logout.isPending}>
           <LogOutIcon />
           Sign out

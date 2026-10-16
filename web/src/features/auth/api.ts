@@ -3,6 +3,7 @@ import { useNavigate } from "react-router"
 
 import { api, unwrap } from "@/api/client"
 import { isApiError } from "@/api/errors"
+import type { LoginRequest } from "@/api/types"
 import { meQueryKey } from "@/lib/query-client"
 
 export const meQueryOptions = queryOptions({
@@ -16,6 +17,13 @@ export function useMe() {
   return useSuspenseQuery(meQueryOptions).data
 }
 
+/** Public settings (`GET /api/config`, anonymous): whether sign-up is open, the tenancy mode. */
+export const configQueryOptions = queryOptions({
+  queryKey: ["config"],
+  queryFn: ({ signal }) => unwrap(api.GET("/api/config", { signal })),
+  staleTime: Infinity,
+})
+
 type Credentials = { email: string; password: string }
 
 export function useLogin() {
@@ -23,9 +31,12 @@ export function useLogin() {
   return useMutation({
     meta: { handlesErrors: true },
     // useCookies: the API sets the HttpOnly session cookie; no token is returned to JavaScript.
-    mutationFn: (body: Credentials) => unwrap(api.POST("/api/auth/login", { params: { query: { useCookies: true } }, body })),
-    // Nothing cached belongs to the new session.
-    onSuccess: () => queryClient.clear(),
+    // With two-factor authentication, the same request is repeated with `twoFactorCode` or `twoFactorRecoveryCode`.
+    // rememberDevice: with a 2FA code, this browser won't be asked for a code again (opt-in).
+    mutationFn: ({ rememberDevice, ...body }: LoginRequest & { rememberDevice?: boolean }) =>
+      unwrap(api.POST("/api/auth/login", { params: { query: { useCookies: true, ...(rememberDevice ? { rememberDevice } : {}) } }, body })),
+    // Nothing cached belongs to the new session (the public config stays valid).
+    onSuccess: () => queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== "config" }),
   })
 }
 

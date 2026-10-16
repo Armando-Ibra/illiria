@@ -19,13 +19,12 @@ The dev server proxies `/api` and `/health` to the API at `http://localhost:5080
 first (from the repository root):
 
 ```bash
-docker run -d --name illiria-pg -e POSTGRES_USER=illiria -e POSTGRES_PASSWORD=illiria -e POSTGRES_DB=illiria -p 5432:5432 postgres:17-alpine
+docker compose -f deploy/compose.dev.yml up -d     # Postgres (5432) + Mailpit (SMTP 1025, UI http://localhost:8025)
 cd src/Illiria.Api && dotnet run -- migrate && dotnet run
 ```
 
-The API sends email through SMTP on `localhost:1025` in development; a catcher such as
-[Mailpit](https://mailpit.axllent.org) (`docker run -d -p 1025:1025 -p 8025:8025 axllent/mailpit`) shows them
-at http://localhost:8025. The links in those emails open this app (`/confirm-email`, `/reset-password`,
+In development the API sends email through SMTP on `localhost:1025`: Mailpit catches every message and shows
+it at http://localhost:8025. The links in those emails open this app (`/confirm-email`, `/reset-password`,
 `/invitations/accept`).
 
 ## Scripts
@@ -84,6 +83,26 @@ e2e/            Playwright tests
   `organizationLoader` checks membership for `/orgs/:orgId/*`. `returnTo` only accepts same-origin paths.
 - The UI hides what a role can't do (`useCurrentOrganization().isAdmin`), but the API is the authority.
 - `features/projects` is the reference feature: copy it for a new organization-scoped resource.
+- Public pages read `GET /api/config` (`configQueryOptions`): the tenancy mode and whether sign-up is open.
+
+## Accounts, two-factor authentication and teams
+
+- **Account page** (`/account`, from the account menu): change the email (a confirmation link goes to the new
+  address; the email changes once it's opened), change the password (this session stays signed in, every other
+  one is signed out), and two-factor authentication.
+- **Two-factor authentication** (TOTP): set up with a QR code (`qrcode-generator`, rendered as SVG) or the setup
+  key, confirmed with a 6-digit code. The recovery codes are shown **once** (copy, download as `.txt`). Afterwards:
+  recovery codes left, generate new ones, reset the authenticator, turn it off, forget this browser.
+  Sign-in asks for a code (or a recovery code) as a second step; the password stays in component state only.
+- **Re-authentication**: enabling/disabling 2FA, new recovery codes, resetting the authenticator and changing the
+  email need the current password, sent per request in the `X-Current-Password` header
+  (`currentPasswordHeader()`, percent-encoded). It's never kept beyond the request.
+- **Members page**: admins change roles in place (only roles up to their own; owners' roles only by owners; the
+  API keeps the last owner), remove members and revoke pending invitations. Every member can leave from the
+  "Danger zone"; afterwards the app opens another organization, or onboarding (multi-tenant) / "no access"
+  (single-tenant).
+- **Single-tenant mode** (`Tenancy__Mode=Single`): no organization switcher, no onboarding, no "new
+  organization". Users join the default organization when they confirm their email.
 
 ## UI components
 
@@ -100,11 +119,18 @@ Theme tokens (light and dark) are CSS variables in `src/index.css`. Dark mode fo
 
 ## End-to-end tests
 
-The Playwright tests run against the **real API** (no mocks); Playwright starts the Vite dev server itself.
-New accounts must be able to sign in without confirming their email, so start the API with:
+The Playwright tests run against the **real API** and its **real emails** (no mocks): they register accounts,
+open the links in the emails through [Mailpit's API](https://mailpit.axllent.org/docs/api-v1/), and compute
+authenticator codes themselves (RFC 6238, `e2e/helpers/totp.ts`). Playwright starts the Vite dev server itself.
+
+From the repository root, start the dependencies, migrate, and run the API with default dev settings (confirmed
+emails required, SMTP to Mailpit) plus higher rate limits, since every test signs in from the same IP:
 
 ```bash
-cd src/Illiria.Api && Identity__RequireConfirmedEmail=false dotnet run
+docker compose -f deploy/compose.dev.yml up -d
+cd src/Illiria.Api
+dotnet run -- migrate
+RateLimiting__AuthPermitLimit=1000 RateLimiting__InvitationsPerHour=1000 dotnet run
 ```
 
 Then, from `web/`:
@@ -114,8 +140,25 @@ pnpm exec playwright install chromium   # once
 pnpm run test:e2e
 ```
 
-Each run registers fresh `@e2e.illiria.test` accounts. Set `E2E_BASE_URL` to test an already running app
-instead of starting the dev server.
+**Single-tenant mode** has its own spec (`e2e/single-mode.spec.ts`), which needs an API in single mode on an
+**empty** database (the first confirmed user becomes the owner) and runs alone:
+
+```bash
+docker compose -f deploy/compose.dev.yml down -v && docker compose -f deploy/compose.dev.yml up -d
+cd src/Illiria.Api && dotnet run -- migrate
+Tenancy__Mode=Single RateLimiting__AuthPermitLimit=1000 RateLimiting__InvitationsPerHour=1000 dotnet run
+cd web && E2E_TENANCY_MODE=Single pnpm run test:e2e
+```
+
+| Variable | Default | |
+| --- | --- | --- |
+| `MAILPIT_URL` | `http://localhost:8025` | Mailpit's HTTP API. |
+| `E2E_TENANCY_MODE` | `Multi` | `Single` runs only the single-mode spec; a global setup checks it matches the API. |
+| `E2E_BASE_URL` | – | Test an already running app instead of starting the dev server. |
+| `ILLIRIA_API_URL` | `http://localhost:5080` | Where the dev server proxies `/api` (and where the setup checks the API). |
+
+Every test uses fresh `@e2e.illiria.test` addresses and looks emails up by recipient, so tests run in parallel
+and Mailpit and the database never need cleaning (except for the single-mode run).
 
 ## Package manager hardening
 

@@ -62,6 +62,9 @@ internal static partial class InvitationEndpoints
             .RequireOrganizationRole(OrganizationRole.Admin)
             .WithValidation<CreateInvitationRequest>()
             .RequireRateLimiting(Platform.PlatformExtensions.InvitationsRateLimitPolicy)
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .ProducesProblem(StatusCodes.Status429TooManyRequests)
+            .ProducesProblem(StatusCodes.Status503ServiceUnavailable)
             .WithName("CreateInvitation");
         organization.MapDelete("/invitations/{invitationId:guid}", RevokeAsync)
             .RequireOrganizationRole(OrganizationRole.Admin)

@@ -28,6 +28,11 @@ export function OrganizationSwitcher() {
     navigate(`/orgs/${orgId}/${section}`)
   }
 
+  // Single-tenant mode: one organization, nothing to switch to or create.
+  if (me.tenancyMode === "Single" && me.organizations.length <= 1) {
+    return <span className="max-w-56 truncate px-2 text-sm font-medium">{current.name}</span>
+  }
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger

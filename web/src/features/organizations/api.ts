@@ -44,12 +44,47 @@ export function useRemoveMember(orgId: string) {
   })
 }
 
+/** Admin+. The API refuses roles above the caller's own, owner changes by non-owners, and demoting the last owner. */
+export function useChangeMemberRole(orgId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ userId, role }: { userId: string; role: OrganizationRole }) =>
+      unwrap(api.PUT("/api/orgs/{orgId}/members/{userId}/role", { params: { path: { orgId, userId } }, body: { role } })),
+    // My own role may have changed too, and it lives in /api/me.
+    onSuccess: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: organizationKeys.members(orgId) }),
+        queryClient.invalidateQueries({ queryKey: meQueryKey }),
+      ]),
+  })
+}
+
+/**
+ * Any member can leave; the last owner gets a 409. On success the caller refreshes /api/me (see the members page)
+ * and moves on: everything cached for the organization is dropped then.
+ */
+export function useLeaveOrganization(orgId: string) {
+  return useMutation({
+    mutationFn: () => unwrap(api.POST("/api/orgs/{orgId}/leave", { params: { path: { orgId } } })),
+  })
+}
+
 export function useCreateInvitation(orgId: string) {
   const queryClient = useQueryClient()
   return useMutation({
     meta: { handlesErrors: true },
     mutationFn: (body: { email: string; role: OrganizationRole }) =>
       unwrap(api.POST("/api/orgs/{orgId}/invitations", { params: { path: { orgId } }, body })),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: organizationKeys.invitations(orgId) }),
+  })
+}
+
+/** Deletes a pending invitation: its link stops working. */
+export function useRevokeInvitation(orgId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (invitationId: string) =>
+      unwrap(api.DELETE("/api/orgs/{orgId}/invitations/{invitationId}", { params: { path: { orgId, invitationId } } })),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: organizationKeys.invitations(orgId) }),
   })
 }

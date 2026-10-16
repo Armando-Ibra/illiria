@@ -1,8 +1,10 @@
 import { createBrowserRouter, data, redirect, type LoaderFunctionArgs } from "react-router"
 
+import { AccountLayout } from "@/app/account-layout"
 import { AppLayout } from "@/app/app-layout"
 import { RouteError } from "@/app/route-error"
 import { LoadingState } from "@/components/states"
+import { AccountPage } from "@/features/account/pages/account-page"
 import { CheckEmailPage } from "@/features/auth/pages/check-email-page"
 import { ConfirmEmailPage } from "@/features/auth/pages/confirm-email-page"
 import { ForgotPasswordPage } from "@/features/auth/pages/forgot-password-page"
@@ -42,6 +44,7 @@ export const router = createBrowserRouter([
       { path: "/invitations/accept", loader: signedIn, element: <AcceptInvitationPage /> },
       { path: "/onboarding", loader: onboardingLoader, element: <OnboardingPage /> },
       { path: "/no-access", loader: noAccessLoader, element: <NoAccessPage /> },
+      { path: "/account", loader: signedIn, element: <AccountLayout />, children: [{ index: true, element: <AccountPage /> }] },
 
       // Signed in, inside an organization the user is a member of.
       {

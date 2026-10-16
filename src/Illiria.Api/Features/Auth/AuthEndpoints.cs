@@ -18,6 +18,25 @@ public sealed record AppConfigResponse(TenancyMode TenancyMode, bool Registratio
 
 public static class AuthEndpoints
 {
+    /// <summary>Documents the parameters <see cref="AuthHardening"/> adds to Identity's endpoints.</summary>
+    public static IServiceCollection AddAuthDocumentation(this IServiceCollection services) =>
+        services.Configure<Microsoft.AspNetCore.OpenApi.OpenApiOptions>("v1", options => options.AddOperationTransformer((operation, context, _) =>
+        {
+            if (context.Description.RelativePath == "api/auth/login")
+            {
+                operation.Parameters ??= [];
+                operation.Parameters.Add(new Microsoft.OpenApi.OpenApiParameter
+                {
+                    Name = "rememberDevice",
+                    In = Microsoft.OpenApi.ParameterLocation.Query,
+                    Description = "With a 2FA code: don't ask for a code again on this browser.",
+                    Schema = new Microsoft.OpenApi.OpenApiSchema { Type = Microsoft.OpenApi.JsonSchemaType.Boolean },
+                });
+            }
+
+            return Task.CompletedTask;
+        }));
+
     public static IEndpointRouteBuilder MapAuthEndpoints(this IEndpointRouteBuilder endpoints)
     {
         // Register, login (?useCookies=true), confirm email, forgot/reset password, 2FA: ASP.NET Core Identity.

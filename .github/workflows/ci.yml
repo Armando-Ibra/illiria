@@ -63,6 +63,10 @@ jobs:
   e2e:
     name: E2E
     runs-on: ubuntu-latest
+    env:
+      # One runner IP sends every request: lift the per-IP/per-user limits for the test run.
+      RateLimiting__AuthPermitLimit: "1000"
+      RateLimiting__InvitationsPerHour: "1000"
     services:
       postgres:
         image: postgres:17-alpine

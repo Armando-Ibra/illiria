@@ -96,6 +96,19 @@ function DropdownMenuItem({
   )
 }
 
+/** A menu item that navigates: renders an `<a>` (pass `render={<Link to="…" />}` for router links). */
+function DropdownMenuLinkItem({ className, inset, closeOnClick = true, ...props }: MenuPrimitive.LinkItem.Props & { inset?: boolean }) {
+  return (
+    <MenuPrimitive.LinkItem
+      data-slot="dropdown-menu-link-item"
+      data-inset={inset}
+      closeOnClick={closeOnClick}
+      className={cn(itemClassName, className)}
+      {...props}
+    />
+  )
+}
+
 function DropdownMenuRadioGroup({ ...props }: MenuPrimitive.RadioGroup.Props) {
   return <MenuPrimitive.RadioGroup data-slot="dropdown-menu-radio-group" {...props} />
 }
@@ -159,6 +172,7 @@ export {
   DropdownMenuGroup,
   DropdownMenuLabel,
   DropdownMenuItem,
+  DropdownMenuLinkItem,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuSeparator,

@@ -25,6 +25,15 @@ const csrf: Middleware = {
 export const api = createClient<paths>({ baseUrl: "/", credentials: "same-origin" })
 api.use(csrf)
 
+/**
+ * Re-authentication for sensitive account changes (2FA settings, email change): the API checks this header
+ * against the current password. Header values must be Latin-1, so the password is always percent-encoded
+ * (the API decodes it). Pass the password per call; never keep it around.
+ */
+export function currentPasswordHeader(password: string): Record<string, string> {
+  return { "X-Current-Password": encodeURIComponent(password) }
+}
+
 type ApiResult<T> = { data?: T; error?: unknown; response: Response }
 
 /** Awaits an `api.*` call and returns its data, or throws an {@link ApiError} for any non-2xx response. */

@@ -28,7 +28,10 @@ const requestNewLink = (
   </Link>
 )
 
-/** Landing page of the reset email: /reset-password?email=…&code=… */
+/**
+ * Landing page of the reset email and of the "finish setting up your account" email (unconfirmed accounts):
+ * /reset-password?email=…&code=… Setting the password also confirms the email address.
+ */
 export function ResetPasswordPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
@@ -41,7 +44,7 @@ export function ResetPasswordPage() {
   })
 
   if (!email || !code) {
-    return <AuthCard title="Invalid link" description="This password reset link is incomplete." footer={requestNewLink} />
+    return <AuthCard title="Invalid link" description="This link is incomplete." footer={requestNewLink} />
   }
 
   const onSubmit = form.handleSubmit(({ newPassword }) =>
@@ -49,7 +52,7 @@ export function ResetPasswordPage() {
       { email, resetCode: code, newPassword },
       {
         onSuccess: () => {
-          toast.success("Password changed. Sign in with your new password.")
+          toast.success("Password saved. Sign in with your new password.")
           navigate("/login", { replace: true })
         },
         // Password policy errors go on the field; InvalidToken (the link is wrong) becomes the form-level error.
@@ -83,7 +86,7 @@ export function ResetPasswordPage() {
           />
           <Button type="submit" disabled={reset.isPending}>
             {reset.isPending && <Spinner />}
-            Change password
+            Save password
           </Button>
         </FieldGroup>
       </form>

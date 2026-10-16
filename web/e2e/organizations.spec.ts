@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test"
 
-import { createOrganization, signUpAndSignIn } from "./helpers"
+import { createOrganization, openMembers, signUpAndSignIn } from "./helpers/accounts"
 
 test("create an organization and a project", async ({ page }) => {
   await signUpAndSignIn(page)
@@ -27,9 +27,10 @@ test("an owner can open the invite dialog with every role", async ({ page }) => 
   const email = await signUpAndSignIn(page)
   await createOrganization(page, "Invites Inc")
 
-  await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Members" }).first().click()
-  await expect(page.getByRole("heading", { name: "Members", exact: true })).toBeVisible()
-  await expect(page.getByRole("row", { name: new RegExp(email) })).toContainText("Owner")
+  await openMembers(page)
+  // The owner's own row: role editable (owners can change owners), no "Remove" for oneself.
+  await expect(page.getByRole("combobox", { name: `Role for ${email}` })).toHaveText("Owner")
+  await expect(page.getByRole("button", { name: `Remove ${email}` })).toHaveCount(0)
   await expect(page.getByText("No pending invitations")).toBeVisible()
 
   await page.getByRole("button", { name: "Invite member" }).click()
@@ -43,4 +44,15 @@ test("an owner can open the invite dialog with every role", async ({ page }) => 
 
   await dialog.getByRole("button", { name: "Cancel" }).click()
   await expect(dialog).toBeHidden()
+})
+
+test("the last owner can't demote themselves", async ({ page }) => {
+  const email = await signUpAndSignIn(page)
+  await createOrganization(page, "Solo")
+  await openMembers(page)
+
+  await page.getByRole("combobox", { name: `Role for ${email}` }).click()
+  await page.getByRole("option", { name: "Member" }).click()
+  await expect(page.getByText("An organization must keep at least one owner.")).toBeVisible()
+  await expect(page.getByRole("combobox", { name: `Role for ${email}` })).toHaveText("Owner")
 })

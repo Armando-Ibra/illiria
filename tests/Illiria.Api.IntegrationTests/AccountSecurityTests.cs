@@ -118,6 +118,54 @@ public sealed class AccountSecurityTests(MultiTenantApiFactory factory) : IAsync
     }
 
     [Fact]
+    public async Task A_browser_skips_two_factor_only_when_the_user_asked_to_remember_it()
+    {
+        var setup = await factory.SignUpAsync("ada@example.com");
+        var key = await EnableTwoFactorAsync(setup);
+        var browser = factory.CreateBrowserClient();
+        var credentials = new { email = "ada@example.com", password = TestUsers.Password };
+
+        // Signed in with a code, without "remember": the next sign-in asks for a code again.
+        (await browser.PostAsJsonAsync("/api/auth/login?useCookies=true", new { credentials.email, credentials.password, twoFactorCode = Totp.Code(key) }, Ct)).StatusCode.ShouldBe(HttpStatusCode.OK);
+        await browser.PostAsync(new Uri("/api/auth/logout", UriKind.Relative), null, Ct);
+        (await browser.PostAsJsonAsync("/api/auth/login?useCookies=true", credentials, Ct)).StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+
+        // With "remember this browser" it doesn't.
+        (await browser.PostAsJsonAsync("/api/auth/login?useCookies=true&rememberDevice=true", new { credentials.email, credentials.password, twoFactorCode = Totp.Code(key) }, Ct)).StatusCode.ShouldBe(HttpStatusCode.OK);
+        await browser.PostAsync(new Uri("/api/auth/logout", UriKind.Relative), null, Ct);
+        (await browser.PostAsJsonAsync("/api/auth/login?useCookies=true", credentials, Ct)).StatusCode.ShouldBe(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task Turning_two_factor_on_again_replaces_the_recovery_codes()
+    {
+        var client = await factory.SignUpAsync("ada@example.com");
+        var key = await EnableTwoFactorAsync(client);
+        var firstCodes = await RecoveryCodesFromLastEnableAsync(client, key, disableFirst: true);
+
+        // The codes from the first enrollment no longer sign in.
+        var other = factory.CreateBrowserClient();
+        (await other.PostAsJsonAsync("/api/auth/login?useCookies=true", new { email = "ada@example.com", password = TestUsers.Password, twoFactorRecoveryCode = firstCodes.Old[0] }, Ct))
+            .StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+        firstCodes.New.ShouldNotBeEmpty();
+        firstCodes.New.ShouldNotContain(firstCodes.Old[0]);
+    }
+
+    [Fact]
+    public async Task Invite_only_mode_still_lets_invited_people_sign_up()
+    {
+        var owner = await factory.SignUpAsync("owner@example.com");
+        var organization = await owner.CreateOrganizationAsync("Acme");
+        await owner.PostAsJsonAsync($"/api/orgs/{organization.Id}/invitations", new Features.Organizations.CreateInvitationRequest("guest@example.com", OrganizationRole.Member), Json.Options, Ct);
+
+        using var inviteOnly = factory.WithWebHostBuilder(b => b.UseSetting("Identity:AllowRegistration", "false"));
+        var client = ApiFactory.CreateBrowserClient(inviteOnly);
+
+        (await client.PostAsJsonAsync("/api/auth/register", new { email = "GUEST@example.com", password = TestUsers.Password }, Ct)).StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await client.PostAsJsonAsync("/api/auth/register", new { email = "stranger@example.com", password = TestUsers.Password }, Ct)).StatusCode.ShouldBe(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
     public async Task Bearer_tokens_are_disabled()
     {
         await factory.SignUpAsync("ada@example.com");
@@ -171,5 +219,30 @@ public sealed class AccountSecurityTests(MultiTenantApiFactory factory) : IAsync
         });
 
         (await client.GetFromJsonAsync<List<ProjectDto>>($"/api/orgs/{organization.Id}/projects", Ct))!.ShouldHaveSingleItem();
+    }
+
+    private static async Task<string> EnableTwoFactorAsync(HttpClient client)
+    {
+        var setup = await (await client.PostAsJsonAsync("/api/auth/manage/2fa", new { }, Ct)).Content.ReadFromJsonAsync<JsonElement>(Ct);
+        var key = setup.GetProperty("sharedKey").GetString()!;
+        client.DefaultRequestHeaders.Remove("X-Current-Password");
+        client.DefaultRequestHeaders.Add("X-Current-Password", Uri.EscapeDataString(TestUsers.Password));
+        (await client.PostAsJsonAsync("/api/auth/manage/2fa", new { enable = true, twoFactorCode = Totp.Code(key) }, Ct)).StatusCode.ShouldBe(HttpStatusCode.OK);
+        return key;
+    }
+
+    /// <summary>Reads the current codes (by regenerating once), disables 2FA, re-enables it and returns old and new codes.</summary>
+    private static async Task<(string[] Old, string[] New)> RecoveryCodesFromLastEnableAsync(HttpClient client, string key, bool disableFirst)
+    {
+        var regenerated = await (await client.PostAsJsonAsync("/api/auth/manage/2fa", new { resetRecoveryCodes = true }, Ct)).Content.ReadFromJsonAsync<JsonElement>(Ct);
+        var old = regenerated.GetProperty("recoveryCodes").EnumerateArray().Select(c => c.GetString()!).ToArray();
+        if (disableFirst)
+        {
+            (await client.PostAsJsonAsync("/api/auth/manage/2fa", new { enable = false }, Ct)).StatusCode.ShouldBe(HttpStatusCode.OK);
+        }
+
+        var enabled = await (await client.PostAsJsonAsync("/api/auth/manage/2fa", new { enable = true, twoFactorCode = Totp.Code(key) }, Ct)).Content.ReadFromJsonAsync<JsonElement>(Ct);
+        var fresh = enabled.GetProperty("recoveryCodes").EnumerateArray().Select(c => c.GetString()!).ToArray();
+        return (old, fresh);
     }
 }

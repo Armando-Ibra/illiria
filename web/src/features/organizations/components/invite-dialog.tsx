@@ -4,7 +4,7 @@ import { Controller, useForm } from "react-hook-form"
 import { toast } from "sonner"
 import { z } from "zod"
 
-import { isApiError } from "@/api/errors"
+import { errorMessage, isApiError } from "@/api/errors"
 import type { OrganizationRole } from "@/api/types"
 import { FormError } from "@/components/form-error"
 import { TextField } from "@/components/form-fields"
@@ -60,8 +60,14 @@ export function InviteDialog({ orgId, myRole }: { orgId: string; myRole: Organiz
         onOpenChange(false)
       },
       onError: (error) => {
-        if (isApiError(error, 409)) form.setError("email", { message: "This person is already a member." })
-        else applyApiError(form, error)
+        // 409: already a member, or already invited (the API's title says which).
+        if (isApiError(error, 409)) {
+          form.setError("email", { message: error.problem.title ?? "This person can't be invited again." }, { shouldFocus: true })
+        } else if (isApiError(error, 429)) {
+          toast.error(errorMessage(error)) // e.g. too many invitations in the last hour
+        } else {
+          applyApiError(form, error)
+        }
       },
     }),
   )

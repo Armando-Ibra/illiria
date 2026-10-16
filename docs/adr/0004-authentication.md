@@ -20,7 +20,10 @@ no server-side logout, 2FA re-enrollment without password). jasontaylordev uses 
 - **Pre-registration defense**: someone can register another person's address with a password they know. For an
   unconfirmed account, "forgot password" and "resend confirmation" send a set-password link (and completing it confirms
   the address), and unconfirmed accounts are deleted after 48 hours.
-- `Identity:AllowRegistration=false` turns off public sign-up (invite-only apps); `GET /api/config` tells the web app.
+- `Identity:AllowRegistration=false` turns off public sign-up (invite-only apps): only addresses with a pending
+  invitation can register. `GET /api/config` tells the web app.
+- 2FA "remember this browser" is opt-in (`rememberDevice=true` on login); Identity would otherwise remember every
+  browser that passes 2FA, logout included. Turning 2FA on always issues fresh recovery codes.
 - Same origin for web app and API (Caddy in production, Vite proxy in dev): no CORS.
 - **CSRF**: every non-GET `/api` request must send `X-CSRF: 1` (a custom header needs same-origin script).
 - Password ≥ 10 chars, lockout 5 attempts / 15 min, confirmed email required to log in.

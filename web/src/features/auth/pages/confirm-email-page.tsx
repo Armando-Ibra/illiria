@@ -1,11 +1,13 @@
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { CircleCheckIcon, CircleXIcon } from "lucide-react"
+import { useEffect } from "react"
 import { Link, useSearchParams } from "react-router"
 
 import { LoadingState } from "@/components/states"
 import { buttonVariants } from "@/components/ui/button"
 import { confirmEmailQueryOptions, type ConfirmEmailParams } from "@/features/auth/api"
 import { AuthCard } from "@/features/auth/components/auth-card"
+import { meQueryKey } from "@/lib/query-client"
 
 /** Landing page of the confirmation email: /confirm-email?userId=…&code=…[&changedEmail=…] */
 export function ConfirmEmailPage() {
@@ -22,7 +24,14 @@ export function ConfirmEmailPage() {
 }
 
 function Confirmation({ params }: { params: ConfirmEmailParams }) {
+  const queryClient = useQueryClient()
   const confirmation = useQuery(confirmEmailQueryOptions(params))
+  const confirmed = confirmation.isSuccess
+
+  // The signed-in user's email (a change) or confirmation status changed: don't show the cached one.
+  useEffect(() => {
+    if (confirmed) void queryClient.invalidateQueries({ queryKey: meQueryKey })
+  }, [confirmed, queryClient])
 
   if (confirmation.isPending) {
     return (
@@ -39,7 +48,11 @@ function Confirmation({ params }: { params: ConfirmEmailParams }) {
   return (
     <AuthCard
       title="Email confirmed"
-      description={params.changedEmail ? "Your new email address is confirmed." : "Your account is ready."}
+      description={
+        params.changedEmail
+          ? `Your email address is now ${params.changedEmail}. Use it to sign in from now on.`
+          : "Your account is ready."
+      }
     >
       <div className="flex flex-col items-center gap-4">
         <CircleCheckIcon aria-hidden className="size-10 text-emerald-600 dark:text-emerald-400" />

@@ -9,7 +9,7 @@ ADR 0004 (authentication). Every control below has an integration or architectur
 |---|---|
 | Reading or changing another organization's data | Organization only from the route + membership checked on every request (404 for non-members); fail-closed EF filter; writes to foreign rows throw; no bare `IgnoreQueryFilters()`, no raw SQL in features |
 | Role escalation | Nobody grants above their own role; only Owners touch Owners; last Owner protected (with a lock) |
-| Stolen session cookie | HttpOnly + Secure + SameSite=Lax; server-side sessions revoked on logout; password/2FA/email changes need the current password; password change/reset signs out other sessions |
+| Stolen session cookie | HttpOnly + Secure + SameSite=Lax; server-side sessions revoked on logout; password/2FA/email changes need the current password; password change/reset signs out other sessions; 2FA "remember this browser" only on request |
 | CSRF | `X-CSRF` header required on every state-changing `/api` request; no CORS |
 | Credential stuffing / brute force | Lockout after 5 failures (15 min); per-IP rate limit on `/api/auth`; 2FA (TOTP) |
 | Account pre-registration | Unconfirmed accounts can't sign in; set-password link for unconfirmed accounts; purge after 48 h |
@@ -29,3 +29,6 @@ ADR 0004 (authentication). Every control below has an integration or architectur
   email they didn't request, the squatter can sign in until the owner resets the password. The email says to ignore it.
 - **Disabling 2FA with the password alone** (no TOTP code): someone with both the session and the password already
   controls the account.
+- **TOTP codes can be reused within their 30-second window** (Identity keeps no record of used codes).
+- **Confirming an email change signs out the other sessions within 5 minutes**, the one that asked included:
+  the address is part of the identity, so a fresh sign-in is acceptable.

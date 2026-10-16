@@ -30,11 +30,15 @@ internal static class MemberEndpoints
         organization.MapPut("/members/{userId:guid}/role", ChangeRoleAsync)
             .RequireOrganizationRole(OrganizationRole.Admin)
             .WithValidation<ChangeMemberRoleRequest>()
+            .ProducesProblem(StatusCodes.Status409Conflict)
             .WithName("ChangeMemberRole");
         organization.MapDelete("/members/{userId:guid}", RemoveAsync)
             .RequireOrganizationRole(OrganizationRole.Admin)
+            .ProducesProblem(StatusCodes.Status409Conflict)
             .WithName("RemoveMember");
-        organization.MapPost("/leave", LeaveAsync).WithName("LeaveOrganization");
+        organization.MapPost("/leave", LeaveAsync)
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .WithName("LeaveOrganization");
     }
 
     private static async Task<Ok<List<MemberDto>>> ListAsync(ICurrentOrganization current, AppDbContext db, CancellationToken cancellationToken)

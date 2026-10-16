@@ -8,6 +8,7 @@ var migrateOnly = MigrateCommand.IsRequested(args);
 
 var builder = WebApplication.CreateBuilder(args);
 builder.AddPlatform(migrateOnly);
+builder.Services.AddAuthDocumentation();
 
 var app = builder.Build();
 

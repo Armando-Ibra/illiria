@@ -4,7 +4,9 @@ using Illiria.Api.Platform.Identity;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.Data;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.EntityFrameworkCore;
 
 namespace Illiria.Api.Features.Auth;
 
@@ -32,15 +34,12 @@ internal static class AuthHardening
             return TypedResults.Problem(statusCode: StatusCodes.Status400BadRequest, title: "Sign in with ?useCookies=true: bearer tokens are disabled.");
         }
 
-        if (path.StartsWithSegments("/api/auth/register") && !RegistrationEnabled(http))
+        var forgetTwoFactorClient = false;
+        for (var i = 0; i < context.Arguments.Count; i++)
         {
-            return TypedResults.NotFound();
-        }
-
-        foreach (var argument in context.Arguments)
-        {
-            var handled = argument switch
+            var handled = context.Arguments[i] switch
             {
+                RegisterRequest request => await AllowRegistrationAsync(http, request.Email),
                 ForgotPasswordRequest request => await SendSetupLinkIfUnconfirmedAsync(http, request.Email),
                 ResendConfirmationEmailRequest request => await SendSetupLinkIfUnconfirmedAsync(http, request.Email),
                 ResetPasswordRequest request => await ResetUnconfirmedAccountAsync(http, request),
@@ -54,9 +53,55 @@ internal static class AuthHardening
             {
                 return handled;
             }
+
+            switch (context.Arguments[i])
+            {
+                // Turning 2FA on always issues fresh recovery codes: old ones (from an earlier enrollment) must not survive.
+                case TwoFactorRequest { Enable: true } request:
+                    context.Arguments[i] = new TwoFactorRequest
+                    {
+                        Enable = request.Enable,
+                        TwoFactorCode = request.TwoFactorCode,
+                        ResetSharedKey = request.ResetSharedKey,
+                        ResetRecoveryCodes = true,
+                        ForgetMachine = request.ForgetMachine,
+                    };
+                    break;
+
+                // Identity remembers every browser that passes 2FA (for good, logout included). Only when asked to.
+                case LoginRequest request when !string.IsNullOrEmpty(request.TwoFactorCode) || !string.IsNullOrEmpty(request.TwoFactorRecoveryCode):
+                    forgetTwoFactorClient = !(bool.TryParse(http.Request.Query["rememberDevice"], out var remember) && remember);
+                    break;
+            }
         }
 
-        return await KeepSessionAfterSecurityChangeAsync(http, await next(context));
+        var result = await next(context);
+        if (forgetTwoFactorClient)
+        {
+            await http.SignOutAsync(IdentityConstants.TwoFactorRememberMeScheme);
+        }
+
+        return await KeepSessionAfterSecurityChangeAsync(http, result);
+    }
+
+    /// <summary>
+    /// With public sign-up off (Identity:AllowRegistration=false) the app is invite-only: only an address with a
+    /// pending invitation can create an account (it still has to confirm the email before accepting).
+    /// </summary>
+    private static async Task<IResult?> AllowRegistrationAsync(HttpContext http, string email)
+    {
+        if (RegistrationEnabled(http))
+        {
+            return null;
+        }
+
+        var normalized = http.RequestServices.GetRequiredService<UserManager<User>>().NormalizeEmail(email);
+        var now = http.RequestServices.GetRequiredService<TimeProvider>().GetUtcNow();
+        var db = http.RequestServices.GetRequiredService<Platform.Persistence.AppDbContext>();
+#pragma warning disable CA1862 // Translated to SQL upper(); string.Equals(..., StringComparison) isn't translatable.
+        var invited = await db.Invitations.AnyAsync(i => i.AcceptedAt == null && i.ExpiresAt > now && i.Email.ToUpper() == normalized, http.RequestAborted);
+#pragma warning restore CA1862
+        return invited ? null : TypedResults.NotFound();
     }
 
     public static bool RegistrationEnabled(HttpContext http) =>

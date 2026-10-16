@@ -19,7 +19,7 @@ dotnet test Illiria.slnx                                   # needs Docker for in
 dotnet ef migrations add <Name> --project src/Illiria.Api --output-dir Platform/Persistence/Migrations
 cd web && pnpm run api:gen                                  # after any API contract change
 cd web && pnpm run lint && pnpm run typecheck && pnpm run build
-cd web && pnpm run test:e2e        # Playwright vs the REAL API: start it first with Identity__RequireConfirmedEmail=false
+cd web && pnpm run test:e2e        # Playwright vs the REAL API + Mailpit (see web/README.md; CI: .github/workflows/ci.yml, job E2E)
 ```
 
 ## Rules (each one is tested or checked in CI)
